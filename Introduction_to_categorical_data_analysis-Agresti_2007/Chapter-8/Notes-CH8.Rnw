@@ -1,0 +1,1005 @@
+% arara: pdflatex: { shell: true }
+% arara: biber
+% arara: pdflatex: { shell: true }
+% arara: pdflatex: { shell: true, synctex: yes }
+
+\documentclass[11pt,twoside]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{graphicx,calc}
+\usepackage[x11names]{xcolor}
+\usepackage[paper=letterpaper,divide={2.5cm,*,2cm}]{geometry}
+\usepackage[backend=biber,style=authoryear,maxcitenames=2,%
+maxbibnames=100,uniquename=false,uniquelist=false]{biblatex}
+\usepackage{graphicx,paralist,multirow,multicol,microtype,fancyvrb}%rotating,supertabular
+\usepackage{hyperref}
+\usepackage{Sweave}
+\usepackage{minted}
+
+\hypersetup{colorlinks=true,citecolor=black, linkcolor=black,urlcolor=SteelBlue4}
+ 
+\addbibresource{../../R_notes.bib}
+\DefineBibliographyStrings{english}{andothers={\mkbibemph{et al.}},}
+\AtEveryBibitem{\clearfield{month}}
+\AtEveryCitekey{\clearfield{month}}
+\renewbibmacro{in:}{%
+  \ifentrytype{article}{}{\printtext{\bibstring{in}\intitlepunct}}}
+\AtEveryBibitem{\clearlist{language}}
+\AtEveryBibitem{\clearfield{note}}
+\AtEveryBibitem{\clearfield{url}}
+\AtEveryBibitem{\clearfield{issn}}
+\DeclareFieldFormat{urldate}{}
+\DeclareFieldFormat[article]{pages}{#1}
+
+\renewenvironment{Sinput}{\minted[frame=single]{r}}{\endminted}
+\DefineVerbatimEnvironment{Soutput}{Verbatim}{frame=leftline}
+
+\title{Notes from: Loglinear models for contingency
+  tables}
+\author{Saúl Sotomayor Leytón}
+\date{February 2012}
+\makeatletter
+\renewcommand{\maketitle}{%
+ \thispagestyle{empty}
+ \noindent{\Large\textbf{\@title}}\\
+ {\large Chapter 8 \textcite{Agresti-2007}}\\
+ \@author\\
+ \@date\par\vspace{-0.3cm}
+ \noindent\hrulefill\\
+
+ \vspace{0.5cm}
+}
+\makeatother
+\newcommand{\ie}{\emph{i.e. }}
+\newcommand{\eg}{\emph{e.g. }}
+\newcounter{problem}
+\setcounter{problem}{1}
+\newcommand{\problem}{\noindent\textbf{Problem \arabic{problem}}\\
+  
+  \vspace{-0.3cm}%
+  \refstepcounter{problem}}
+\begin{document}
+\maketitle
+
+\noindent\textbf{Setup}
+
+<<setup>>=
+library(MASS)
+library(survival)
+library(glmmML)
+library(repeated)
+library(vcd)
+options(width=70)
+@
+
+\section{Introduction}
+\label{sec:introduction}
+This chapter deals with data that are related in some way, for example
+data that were taken for the same subjects in two different occasions,
+or a sample of subjects that are evaluated by two different observers,
+or two observations (that can be questions) that are given by the same
+subjects.\\ Because of this correlation, the construction of the table
+(and the data frame in \textsf{R}) is different; for the first example
+in \textcite{Agresti-2007} about paying higher taxes or cut living
+standards the construction of the table, because the questions were
+asked to the same people, is the one on the left, however if it was
+asked to different people it would be like the one on the right.
+\begin{table}[h]
+  \centering
+  \begin{tabular}{ccc}
+   \hline
+   \multirow{2}{*}{Pay Higher taxes}%
+   &\multicolumn{2}{c}{Cut living standards}\\\cline{2-3}
+   &Yes&No\\\hline
+   Yes&&\\
+   No&&\\\hline
+  \end{tabular}
+  \hspace{1cm}
+  \begin{tabular}{lcc}
+   \hline
+   &Yes&No\\\hline
+   Pay higher taxes&&\\
+   Cut living standards&&\\\hline
+  \end{tabular}
+ \caption{Two ways of constructing a table}
+\end{table}
+
+\section{Comparing proportions}
+\label{sec:comp-prop}
+Because the data is related in some way, we expect to see some sort of
+relation in the cells that compose the table. In the example of the
+two measures that could be taken to help the environment, we expect
+that most people who responded ``yes'' to the first question would
+also respond ``yes'' to the other, and the same thing for those who
+responded ``no''.\\ Now, when we compare proportions we are comparing
+whether the first observation was equal, or not, to the second
+observation. In this particular case, whether people are equally in
+favor of an increase in taxes as for a cut in living standards in
+order to help the environment. Note that when the probabilities of a
+``yes'' response for both questions are identical, also are identical
+the probabilities of a ``no'' response:
+
+\begin{equation}
+  \pi_{1+}-\pi_{+1}=(\pi_{11}+\pi_{12})-(\pi_{11}+\pi_{21})=\pi_{12}-\pi_{21}
+\end{equation}
+
+\subsection{McNemar Test}
+\label{sec:mcnemar-test}
+This is a chi-squared test for the null hypothesis that the marginal
+probabilities are equal for row and column, $H_0:\pi_{+1}=\pi_{+1}$,
+which is equivalently to, $H_0:\pi_{12}=\pi_{21}$. Regarding the last
+expression, let $n^*=n_{12}+n_{21}$, under the null hypothesis these
+$n^*$ observations has a 1/2 chance of contributing to $n_{12}$ and 1/2
+change to contribute to $n_{21}$.\\ When $n^*>10$, this binomial
+distribution has a shape similar to the normal distribution with the
+same mean $1/2n^*$ and a standard deviation of
+$\sqrt{n^*(1/2)(1/2)}$. Then the standardized normal test equals:
+
+\begin{equation}
+  z=\frac{n_{12}-n^*(1/2)}{\sqrt{n^*(1/2)(1/2)}}=%
+    \frac{n_{12}-n_{21}}{\sqrt{n_{12}+n_{21}}}
+\end{equation}
+
+An associated p-value below the cut-point of 0.05 provides evidence for
+a difference of proportions.\\
+
+Beside performing a significant test we can also construct a
+confidence interval (CI) that it's much more informative. Let
+$p_{ij}=n_{ij}/n$ be the cell proportions, then the difference,
+$p_{1+}-p_{+1}$ between the sample marginal proportions is the
+estimate for the true difference, $\pi_{1+}-\pi_{+1}$. For this
+difference the sample variance $\sigma^2$ and the standard error equals
+
+\begin{eqnarray*}
+  \label{eq:1}
+  \sigma^2&=&[p_{1+}(1-p_{1+})+p_{+1}(1-p_{+1})-2(p_{11}p_{22}-p_{12}p_{21})]\\
+  SE&=&\sqrt{(n_{12}+n_{21})-(n_{12}-n_{21})^2/n}/n
+\end{eqnarray*}
+
+With these values we can, then, construct the CI, as usual:
+
+\begin{equation}
+  (p_{1+}-p_{+1})\pm Z_{\alpha /2} SE
+\end{equation}
+
+\subsubsection{Calculation in \textsf{R}}
+\label{sec:calculation-r1}
+To calculate the McNemar test in \textsf{R} we need the data in form
+of a matrix and then just use the \texttt{mcnemar.test} function
+without the continuity correction \parencite[see]{Agresti-2007}.
+
+<<mcnemar_test>>=
+# UK prime minister approval at two diff times, Thompson-2012 p177
+table.10.1 <- matrix(c(794, 150, 86, 570), byrow = T, ncol = 2)
+mcnemar.test(table.10.1, correct = FALSE)
+@ 
+
+Computing the CI isn't as straightforward, first we need to calculate
+the table of proportions, then we calculate the marginal proportions
+for the ``yes'' responses.
+
+<<CI>>=
+table.10.1.prop <- prop.table(table.10.1)
+prop.diff <- margin.table(table.10.1.prop, 2)[1] - margin.table(table.10.1.prop,
+    1)[1]
+@ 
+
+In the last command, the numbers \texttt{1} and \texttt{2} specifies whether we want,
+respectively, rows or columns' marginals, while the index
+(\texttt{[1]}) indicates that we only want the marginals for column
+and row 1.\\
+
+As it's noted in the formula for the SE, we only need the cells of the
+off-diagonal, (\ie $n_{12}, n_{21}$), therefore it's convenient to
+store both on a variable.
+
+<<off-diagonal>>=
+off.diag <- diag(table.10.1.prop[1:2, 2:1])
+@ 
+
+The indexing values indicate that we want the off-diagonal elements,
+otherwise, the \texttt{diag} function will return the main diagonal.\\
+With those values we can calculate the CI interval:
+
+<<CI_calculation>>=
+prop.diff + c(-1, 1) * qnorm(0.975) * sqrt((sum(off.diag) - diff(off.diag)^2)/sum(table.10.1))
+@ 
+
+Note that \texttt{qnorm(0.975)} = $Z_{\alpha /2}$ = 1.96. I prefer the
+former expression because it's more meaningful. Also note that the
+functions \texttt{sum} and \texttt{diff} compute the sum and
+difference, respectively.\\
+
+\section{Logistic regression models}
+\label{sec:logist-models}
+
+\subsection{Marginal models for marginal proportions}
+\label{sec:marg-models}
+Section 8.2.1 in \textcite{Agresti-2007} relates the analysis of marginal
+proportions to logistic models in two ways, first by using a
+\emph{identity link}, and second, by using a \emph{logit link}
+function. In the first case we estimate the difference of proportions
+by comparing the models:
+
+\begin{equation}
+  \label{eq:3}
+  P(Y_1=1)=\alpha + \delta, P(Y_2=1)=\alpha
+\end{equation}
+
+Where $\delta=P(Y_1=1)-P(Y_2=1)$. The null hypothesis of equal
+marginal probabilities is evaluated with the McNemar test: $H_0: \delta=0$.\\
+The second case evaluates the odds ratio of marginal distributions
+through the comparison of the following models:
+
+\begin{equation}
+  \label{eq:2}
+  logit P[Y_1=1]=\alpha +\beta; logitP[Y_2=1]=\alpha
+\end{equation}
+Which can be expressed as:
+\begin{equation}
+  \label{eq:4}
+  P[Y_t=1]=\alpha + \beta x_t
+\end{equation}
+where $x_t=1$ for t=1 and 0 otherwise.\\
+
+\subsection{Conditional logistic regression for matched pairs}
+\label{sec:cond-logit}
+The following section discusses another way of expressing matched data
+which decomposes all the n observation in n partial tables like table
+\ref{tab:sub-specific}, namely, one table for each subject
+(there the name, \emph{subject specific table}).
+
+\begin{table}
+  \centering
+  \begin{tabular}{lcc}
+    \hline
+    &\multicolumn{2}{c}{Response}\\\hline
+    Observations&Yes&No\\
+    Pay Higher taxes&1&0\\
+    Cut living standards&1&0\\\hline
+  \end{tabular}
+  \caption{Example of a subject-specific table}
+  \label{tab:sub-specific}
+\end{table}
+
+Note the differences with the \emph{population-averaged table} showed
+in section 8.1 of \textcite{Agresti-2007}.\\
+
+Conditional logistic regression compares the models:
+\begin{equation}
+  \label{eq:5}
+  logit P[Y_{i1}=1]=\alpha_i +\beta; logitP[Y_{i2}=1]=\alpha_i
+\end{equation}
+where \emph{i} represents the subject and \emph{t=1 or 2} the
+observation. As \textcite{Thompson-2009} notes, ``this means that the association within a pair is described completely by $\alpha_i$, and pairs are only
+associated via the common effect, $\beta$. The sign and magnitude of
+$\alpha_i$ relative to $\beta$ will determine the strength of
+association between the two responses. Also these models assume that
+the odds of ``success'' for observation 1 is $exp(\beta)$ times the
+odds for observation 2.\\
+
+\textcite{Agresti-2007} notes that even though this model focuses on
+parameter $\beta$, the occurrence of many $\alpha_i$ parameters
+difficults the fitting of the model. As a way to deal with this
+problem, he proposes \emph{conditional logistic regression} that
+eliminates (conditions) the subject's specific effect and make
+inferences about $\beta$. Through this approach the odds ratio equal
+$exp(\beta) = n_{12}/n_{21}$; for example for table 8.1 the odds ratio
+would be $132/107=1.23$. Thus, assuming that the model holds, the odds
+for a ``yes''response for the question for raising taxes is 23\% higher
+than a ``yes'' answer for cutting living standards.\\
+\textcite{Agresti-2007} notes that the difference of this value from a previous
+one (of 1.11) reflects the differences that usually exists between
+marginal and conditional odds ratio. He also notes that just like the
+McNemar test, the cells $n_{12}$ and $n_{21}$, provide all the
+necessary information.\\
+
+Section 8.2.4 shows how to use logistic regression for case-control
+pairs. In these cases the variable of response is fixed by design,
+matching one ``positive'' case with a ``control''. As it was explained
+in previous chapters, by doing this we invert the relationship: Y
+given X to X given Y, however, because we are working with odds ratios
+the value will be the same.\\
+
+Finally, section 8.2.5 relates the McNemar test to the
+Cochran-Mantel-Haenzel (CMH) test, being the former a especial case of the
+later. More over, it's mentioned that with the CMH test we can expand
+the analysis of marginal homogeneity from 2x2xn data sets to Tx2xn
+(where T represents the observations or questions)
+through a test called \emph{Cochran's Q}, or even a TxIxn data sets
+(where I represents different categories for the observations).
+
+\subsubsection{Conditional logistic models in \textsf{R}}
+\label{sec:cond-logit-R}
+To fit conditional logistic models in \textsf{R} we need to work with
+ungrouped data. As illustrated in \textcite{Thompson-2009} for the
+myocardial infarction example, we need to construct a data frame with
+3 columns, one indicating the pairing (the subject-specific table),
+and the rest , indicating the corresponding combination of factors, in
+this case \texttt{Diabetes} and \texttt{Myocardial Infarction}.
+
+<<cond-logit>>=
+table.10.3 <- data.frame(pair = rep(1:144, rep(2, 144)), MI = rep(c(0,
+    1), 144), diabetes = c(rep(c(1, 1), 9), rep(c(1, 0), 16),
+    rep(c(0, 1), 37), rep(c(0, 0), 82)))
+@ 
+
+Note that the command, \texttt{rep(1:144,rep(2,144))} means that the
+vector of numbers, from 1 to 144, will be repeated two times each
+element. I think it would be simpler to enter
+\texttt{rep(1:144,each=2)}. Also note that the \texttt{diabetes}
+factor is a concatenation of the numbers of subject specific tables
+\parencite[see tables 8.3 and 8.4 in][]{Agresti-2007}.\\
+
+Once we have the data frame, \textcite{Thompson-2009} describes 4 ways to
+fit the conditional logistic model. All these forms are similar in
+that a formula needs to be provided, plus a specification of the
+pairing vector.
+
+\paragraph{Option 1}
+<<con-logit1>>=
+## library(survival)
+fit.CLR <- clogit(MI ~ diabetes + strata(pair), method = "exact",
+    data = table.10.3)
+summary(fit.CLR)
+@ 
+
+The other 3 forms use a generalized linear mixed model and the
+estimate of $\beta$ is a bid different from the previous method.
+
+\paragraph{Option 2}
+<<cond-logit2>>=
+## library(MASS)
+fit.glmmPQL <- glmmPQL(MI ~ diabetes, random = ~1 | pair, family = binomial,
+    data = table.10.3)
+summary(fit.glmmPQL)
+@ 
+The argument \texttt{~1|pair}  is used to specify a random intercept
+as it's characteristic of the GLMMs.
+
+\paragraph{Option 3}
+<<cond-logit3a>>=
+## library(glmmML)
+## Data on myocardial infection for 144 positive patients and their controls
+table.10.3 <- data.frame(pair = rep(1:144, rep(2, 144)), MI = rep(c(0, 1), 144),
+                         diabetes = c(rep(c(1, 1), 9), rep(c(1, 0), 16), rep(c(0, 1), 37),
+                                      rep(c(0, 0), 82)))
+glmmML(MI ~ diabetes, cluster = table.10.3$pair, family = binomial,
+    data = table.10.3)
+@ 
+
+Note that the \texttt{cluster} is used to specify the pairing
+variable and that we need to specify it as part of the data frame, \ie \texttt{table.10.3\$pair}.
+
+\paragraph{Option 4}
+<<cond-logit3b>>=
+## library(repeated)
+fit.glmm <- glmm(MI ~ diabetes, family = binomial, data = table.10.3,
+    nest = pair)
+summary(fit.glmm)
+@ 
+
+The \texttt{nest} argument is used to specify the pairing vector.
+
+\section{Multicategory models}
+\label{sec:multicategory-models}
+This section expands the logistic model for more than two
+categories. The test of marginal homogeneity is:
+
+\begin{equation}
+  \label{eq:6}
+  P(Y_1=i)=P(Y_2=i) for i=1,\ldots,I
+\end{equation}
+
+\textcite{Agresti-2007} describes two types of data that can be used in
+this model, first, for categories that are unordered or
+\emph{nominal}, for example coffee brands; and second, for categories
+that have a particular order. In the former, we test the marginal
+homogeneity hypothesis versus \emph{any} departure of that, while in
+the later we compare the null hypothesis versus a particular departure
+from that. \textcite{Agresti-2007} notes that the former case is less
+powerful, because the many possibilities of departure from homogeneity,
+reflected in the degrees of freedom, df=I-1, than the later, which has
+1 degree of freedom.
+
+\subsection{Nominal multicategory models}
+\label{sec:nomin-mult-models}
+\subsubsection{Nominal models in \textsf{R}}
+\label{sec:nominal-models-r}
+For nominal responses, \textcite[p.183--185]{Thompson-2009} describes a
+way to calculate the deviance value under the null hypothesis. For
+this we need a vector of counts and a matrix of dummy values that
+agrees with the null hypothesis \parencite[see][p. 184]{Agresti-2007}. At
+first sight this matrix this matrix seems complicated but once we
+analyze it, we realize that it isn't; first we need to keep in mind
+that, of the I categories, I-1 are non redundant. Another thing is
+that the matrix has rows equal to the number of cells in the table (in
+this case 16). Finally, the number of columns equal
+$(I-1)^2+1+(I-1)$. They represent the first $I-1$ cells for rows 1 to
+I-1 ($m_{ij}$), plus the last cell ($m_{II}$), and finally, plus the
+I-1 row marginals (which, under the null hypothesis are equal to the
+column marginals). 
+
+<<dummy-matrix,echo=false>>=
+(dummies <- matrix(c(1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 1, 0,
+    0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, -1, -1, -1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
+    0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, -1, -1, -1, 0, 0, 0, 0, -1, 0, 0, -1, 0, 0, -1,
+    0, 0, 0, 1, 0, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1,
+    0, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 1, 0, 0, 0,
+    0, 0, 0, 0, 0, 1, 0, 0, 0), nrow = 16, ncol = ((4 - 1)^2) +
+    1 + 3, dimnames = list(c("m11", "m12", "m13", "m14", "m21",
+    "m22", "m23", "m24", "m31", "m32", "m33", "m34", "m41", "m42",
+    "m43", "m44"), c("m11", "m12", "m13", "m21", "m22", "m23",
+    "m31", "m32", "m33", "m44", "m1+", "m2+", "m3+")), byrow = TRUE))
+@ 
+
+Now let's explain the values. Assume that we need to match the names
+of the rows with those from the columns, for those values that appear
+in both, column and row, the value of the matching cell should be
+one, and zero other wise. This is true for, $m_{11}, m_{12}, m_{13},
+m_{21}, m_{22}, m_{23}, m_{31}, m_{32}, m_{33}$ and $m_{44}$. For the
+other cases we can infer the value from those of the others, for
+example, for $m_{14}$ we see that the first three columns have the
+value \texttt{-1} and the cell corresponding to the column $m_{1+}$
+has the value \texttt{1}. This notation is equivalent to $m_{14}$
+as the following equation shows,
+
+\begin{equation}
+  \label{eq:7}
+  m_{14}=m_{1+}-m_{11}-m_{12}-m_{13}
+\end{equation}
+
+The same thing applies to $m_{24}$ and $m_{34}$.\\
+
+With the explanation of the fitted values we can show the commands
+that fit the model:
+
+<<nominal>>=
+dummies <- matrix(c(1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 1, 0,
+    0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, -1, -1, -1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
+    0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0,
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, -1, -1, -1, 0, 0, 0, 1, -1, 0, 0, -1, 0, 0, -1,
+    0, 0, 0, 1, 0, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1,
+    0, 0, 0, -1, 0, 0, -1, 0, 0, -1, 0, 0, 0, 1, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 1, 0, 0, 0), nrow = 16, ncol = ((4 - 1)^2) +
+    1 + 3, dimnames = list(c("m11", "m12", "m13", "m14", "m21",
+    "m22", "m23", "m24", "m31", "m32", "m33", "m34", "m41", "m42",
+    "m43", "m44"), c("m11", "m12", "m13", "m21", "m22", "m23",
+    "m31", "m32", "m33", "m44", "m1+", "m2+", "m3+")), byrow = TRUE)
+dummies <- data.frame(counts = c(11607, 100, 366, 124, 87, 13677,
+    515, 302, 172, 225, 17819, 270, 63, 176, 286, 10192), dummies)
+fit <- glm(counts ~ . - 1, family = poisson(identity), data = dummies)
+@ 
+
+The coefficients from the model are the fitted values, however, note
+that not all the cells are expressed, thus the missing ones have to be
+calculated through subtracting. The residual deviance and its
+associated p-value provide evidence for the null hypothesis.
+% with the taking the example of
+% \textcite{Agresti-2002}. 
+% In the matrix, the row names represent the
+% vector of counts or cell values. Now, let's assume that we have to
+% match the row values (labels) with the column labels, ``through'' the
+% values of the matrix, for the first row ($m_{11}$) we note that the
+% value that corresponds to the match is \texttt{1} while the others are
+% \texttt{0}. A similar thing happens for the rows, $m_{12}$ and $m_{13}$
+
+\subsection{Ordinal multicategory models}
+\label{sec:ordin-mult-models}
+\subsubsection{Ordinal models in \textsf{R}}
+\label{sec:ordinal-models-r}
+Regarding data that has ordered categories,
+\textcite[p. 254--255]{Agresti-2007} describe the models:
+
+\begin{equation}
+  \label{eq:8}
+  logit P(Y_{i1}\le J)=\alpha_{ij} + \beta; logit P(Y_{i2} \le J)=\alpha_{ij}
+\end{equation}
+
+which are cumulative logit models that ``expresses the logit in
+terms of a subject effects ($\alpha_{ij}$) and a margin effect
+($\beta$)'', the latter under the proportional odds assumption, \ie
+the same for all equations.\\ \textcite[p. 255]{Agresti-2007} describes
+two ways of calculating the estimate of $\beta$ ($\hat\beta$) and its
+standard error, which will help, later, to test the null hypothesis
+that $\beta=0$.\\
+
+In \textcite[p.181--182]{Thompson-2009} it's  described a method to
+calculate the deviance, Wald statistic and Pearson statistic for the
+$H_0:\beta = 0$ but it uses two functions that are not easily
+available, namely \texttt{mph.fit} and \texttt{Marg.fct}, both pertain
+to J. Lang from the university of Iowa\footnote{Note.- I think it
+  isn't difficult to input equation 8.7 from \textcite{Agresti-2007} as a
+  function in \textsf{R}}, the major problem would be to specify the
+function $\Sigma \Sigma_{i<j} (j-i) n_{ij}$.
+
+\section{Loglinear models: Symmetry and quasi-symmetry}
+\label{sec:loglinear-models}
+This section introduces the concepts of \emph{symmetry} and
+\emph{quasi-symmetry}, the former is expressed as $\pi_{ij}-\pi_{ji}$
+which means that all the cells above the main diagonal are mirror
+images of those cells below the main diagonal. When this assumption
+holds, marginal homogeneity must hold too.\\ For tables where I$>$2,
+marginal homogeneity can occur without symmetry, and this can be
+tested using logistic models.\\
+
+Symmetry can be expressed as a logistic model of the form:
+$log(\pi_{ij}/\pi_{ji})=0$ for all i and j. The expressed cell
+frequencies are $\mu_{ij}=(n_{ij}+n_{ji})/2$. The residual degrees of
+freedom for the $\chi^2$ test of goodness of fit equal $I(I-1)/2$. The
+standardized residuals for the symmetry model are: $r_{ij}=(n_{ij}-n_{ji})/\sqrt{(n_{ij}+n_{ji})}$.\\
+
+\textcite{Agresti-2007} states that the symmetry model is so simple that
+the model rarely fits well. As an alternative one can fit a
+quasi-symmetry model: 
+
+\begin{equation}
+  \label{eq:9}
+  log(\pi_{ij}/\pi_{ji})=\beta_i-\beta_j
+\end{equation}
+
+where the symmetry model is a special case.
+
+\subsection{Models for nominal categories}
+\label{sec:models-nomin-categ}
+\subsubsection{Symmetry and quasi-symmetry models in \textsf{R}}
+\label{sec:symm-quasi-symm}
+Although \textcite[section 8.4.2]{Agresti-2007} describes the fitting of
+quasi-symmetry models using logistic regression,
+\textcite[p.186--187]{Thompson-2009} fits both models (symmetry and
+quasi-symmetry) through loglinear models.\\
+
+Using the data on migration among 4 regions in the US,
+\textcite{Thompson-2009} builds a data frame with 3 columns, 1 for each
+factor and a column of counts. Then she creates a vector of characters
+(factors) that represent the cell of the main diagonal and those above
+them. Remember that under the null hypothesis these cells are mirror
+images of those below the main diagonal.
+
+<<symmetry-data1>>=
+residence80 <- residence85 <- (c("NE", "MW", "S", "W"))
+table.10.6 <- expand.grid(res80 = residence80, res85 = residence85) 
+table.10.6$counts <- c(11607, 100, 366, 124, 87, 13677, 515, 302, 172,
+                     225, 17819, 270,  63, 176, 286, 10192)
+table.10.6$symm <- paste(pmin(as.numeric(table.10.6$res80),
+                              as.numeric(table.10.6$res85)),
+                         pmax(as.numeric(table.10.6$res80),
+                              as.numeric(table.10.6$res85)), sep = ",")
+@
+
+The function \texttt{pmin} selects among the two factors, treated as
+numbers, the lower one, while the function \texttt{pmax} selects among
+the same factors the higher one. The result, as noted before, is a
+vector of characters that represent the cell of the main diagonal and
+the above diagonal.\\ Next, as usual, \textcite{Thompson-2009} reverses
+the order of the factor \texttt{symm} to set the last category to
+zero, and fits the loglinear model.
+
+<<symmetry-data2>>=
+table.10.6$symm <- factor(table.10.6$symm, levels = rev(unique(table.10.6$symm)))
+fit.symm <- glm(counts ~ symm, family = poisson(log), data = table.10.6)
+@ 
+
+Later, for the quasi-symmetry model, \textcite{Thompson-2009} adds another
+variable that ``differentiates the main effect for the rows and
+columns'', this is just \texttt{residence80} factor with its levels
+reversed, this to match those for the \texttt{symm}
+
+<<symmetry-data3>>=
+table.10.6$res80a <- factor(table.10.6$res80, levels = rev(residence80))
+fit.qsymm <- glm(counts ~ symm + res80a, family = poisson(log),
+    data = table.10.6)
+@ 
+
+As for any loglinear model, the interaction term $\lambda_{ij}^{XY}$
+represents the log odds ratio for the ``yes'' category of X, relative
+to Y.\\
+
+Because marginal homogeneity is a special case of quasi-symmetry
+models, we can test if that is true with a chi-square test comparing
+these models. Remember that a high deviance difference, with its
+corresponding p-value, provides evidence against the marginal homogeneity.
+
+<<anova-symmetry>>=
+anova(fit.symm, fit.qsymm, test = "Chisq")
+@ 
+
+\subsection{Models for ordered categories}
+\label{sec:models-order-categ}
+The symmetry model for ordered categories is:
+\begin{equation}
+  \label{eq:10}
+  log(\pi_{ij}/\pi_{ji})=\beta(\mu_j-\mu_i)
+\end{equation}
+where $\mu_i$ corresponds to the row and column scores.\\
+
+In this case, the symmetry model corresponds to $\beta=0$. The greater
+the absolute value of $\beta$, the greater the difference among
+$\pi_{ij}$ and $\pi_{ji}$. With categories $\mu_i=i$ the probability
+that the first observation is x categories higher than the second
+observation is $exp(\beta)$. Based on this I think there is an error
+in \textcite[p. 190]{Thompson-2009}.\\
+
+For the quasi-symmetry models for ordered categories,
+\textcite{Thompson-2009} uses the same approach as for nominal categories
+but adding one column that represents the scores.
+
+<<ordered-quasi-symm>>=
+table.10.5 <- data.frame(expand.grid(PreSex = factor(1:4),
+                                   ExSex = factor(1:4)),
+                       counts = c(144, 33,  84,  126,  2,  4 , 14 , 29 ,
+                                  0 , 2 , 6 , 25,  0,  0,  1,  5))
+table.10.5$symm <- paste(pmin(as.numeric(table.10.5$PreSex),
+    as.numeric(table.10.5$ExSex)), pmax(as.numeric(table.10.5$PreSex),
+    as.numeric(table.10.5$ExSex)), sep = ",")
+table.10.5$scores <- rep(1:4, each = 4)
+fit.oqsymm <- glm(counts ~ symm + scores, data = table.10.5,
+    family = poisson(link = log))
+@ 
+
+\section{Measuring agreement between subjects}
+\label{sec:agreement}
+As its name suggest, this section focuses on separate rating of a
+sample by two observers using the same categorical or ordinal
+scale. It centers its attention to the cell in the main diagonal, which
+represent the agreement between observers. As \textcite{Agresti-2007}
+points out, \emph{agreement} is different form \emph{association}, the
+former requires association, while the latter can exist without agreement.\\
+
+One way to see if agreement occurs is to calculate the standardized
+residuals from a model (loglinear) of independence. Cells with
+positive standardized residuals have higher frequencies than what would
+be expected under independence, and, if the largest residuals appear in
+the main diagonal it's a sign that agreement may be present.
+
+\subsubsection{Measuring agreement in R}
+\label{sec:agreement-R}
+For the example of diagnosis of carcinoma, \textcite{Thompson-2009}
+calculates the standardized residuals as follows:
+
+<<agreement>>=
+load('supp_data/pathologist.dat.rda')
+pathologist <- pathologist.dat
+names(pathologist)<- c("y", "B", "A")
+pathologist$y[pathologist$A==4 & (pathologist$B==3 | pathologist$B==4)] <- c(17, 10)
+pathologist$A <- factor(pathologist$A, levels=5:1)
+pathologist$B<-factor(pathologist$B, levels=5:1)
+fit.ind <- glm(y ~ A + B, data = pathologist, family = poisson(log),
+    subset = (A != 5) & (B != 5))
+fit.ind.res <- resid(fit.ind, type = "pearson")/
+    sqrt(1 - lm.influence(fit.ind)$hat)
+@ 
+
+Because there seem to be some degree of agreement, we can fit a model
+that takes into account the degree of agreement. This type of model is
+the \emph{quasi-independence} model:
+\begin{equation}
+  \label{eq:11}
+  log\mu_{ij}=\lambda +\lambda_i^X + \lambda_j^Y +\sigma_iI(i=j)
+\end{equation}
+The loglinear model above shows that a parameter $\sigma_iI$ is added
+to the independence model. Note the indicator variable I, this variable
+equals 1 when i=j. When $\sigma_i>0$ more agreements regarding outcome
+\emph{i} occur than would be expected under independence.\\
+
+\textcite{Thompson-2009} adds these main diagonal elements with the
+following commands:
+
+<<maincolumn>>=
+pathologist$D1 <- as.numeric((pathologist$A == 1) & (pathologist$B ==
+    1))
+pathologist$D2 <- as.numeric((pathologist$A == 2) & (pathologist$B ==
+    2))
+pathologist$D3 <- as.numeric((pathologist$A == 3) & (pathologist$B ==
+    3))
+pathologist$D4 <- as.numeric((pathologist$A == 4) & (pathologist$B ==
+    4))
+@ 
+
+Then she fits the model:
+
+<<agreement-fit>>=
+fit.qi <- glm(y ~ A + B + D1 + D2 + D3 + D4, family = poisson(log),
+    data = pathologist, subset=(A!=5) & (B!=5))
+@ 
+The coefficients for the $D_i$ parameters are used to calculate the
+odds ratio of agreement.
+
+\begin{eqnarray*}
+  \tau_{ab}=&\frac{\pi_{aa}\pi_{bb}}{\pi_{ab}\pi_{ba}}&%
+  =\frac{\mu_{aa}\mu_{bb}}{\mu_{ab}\mu_{ba}}\\
+  =&exp(\delta_a+\delta_b)&=exp(D_a+D_b)
+\end{eqnarray*}
+For example, \textcite{Agresti-2007} calculates that the odds that one
+observer's rating is category 2 rather than 3 is $\hat\tau_{23}$=12.3
+times as high when the other observer's rating is also 2 than when
+it's 3.\\
+
+Though the model fits better than the independence model it still
+lacks some fit; this is because the quasi-independence model assumes
+independence for all the off-diagonal elements, something that not
+always occur. An alternative is to fit a quasi-symmetry or ordinal
+quasi-symmetry model. The former would account for any association
+among the off-diagonal elements.\\
+
+As shown before, to fit a quasi-symmetry model, we need to create an
+extra vector/column that would represent the diagonal and off-diagonal elements.
+
+<<temp>>=
+pathologist2 <- pathologist[(pathologist$A!=5) & (pathologist$B!=5), ]
+pathologist2$A <- pathologist2$A[drop = TRUE]
+pathologist2$B <- pathologist2$B[drop = TRUE]
+pathologist2$symm <- paste(pmin(as.numeric(pathologist2$A),
+ as.numeric(pathologist2$B)), pmax(as.numeric(pathologist2$A),
+ as.numeric(pathologist2$B)), sep = ",")
+pathologist2$symm <- factor(pathologist2$symm,
+                           levels = (unique(pathologist2$symm)))
+@ 
+
+From what it's said on \textcite[p.194]{Thompson-2009} it seems that
+``because of the two symmetric cell with a count of 0 that appear in
+table 8.6 \parencite{Agresti-2007}, the maximum likelihood fitted values
+must also be 0''. Now it's interesting that in order to do that (\ie
+condition those cells to be zero), \textcite{Thompson-2009} sets these two
+cell ($m_{14}$ and $m_{41}$) to zero on the fitted values of the
+quasi-independent model instead of the observed values/counts. In
+other words she uses the fitted values of the quasi-independent model
+as a starting point instead of the observed values.
+
+<<temp2>>=
+starter <- fitted(fit.qi)
+starter[c(4,13)] <- 0 # the fixed zeroes
+@ 
+
+The index \texttt{c(4,13)} represents the mentioned cell counted
+row-wise. The variable \texttt{starter} is then used in the fitting process.
+
+<<temp3>>=
+fit.qsymm <- glm(y~symm+A, data=pathologist2,
+                 family = poisson(log), control=glm.control(maxit=100),
+                 etastart = starter)
+@ 
+
+Another curious thing is that because we have set some cells to zero
+we need to modify the degrees of freedom from 3 to 2. The odds ratio
+of agreement are calculated with the coefficients of the
+\texttt{symms} levels. For example the odds of one observer's
+classification being's 2 instead of 3 when the other observer's
+classification is 2 rather than 3 is.
+
+<<temp4>>=
+ coefs <- fit.qsymm$coefficients
+as.numeric(exp(coefs["symm2,2"] + coefs["symm3,3"]- 2*coefs["symm2,3"]))
+@ 
+
+\subsection{Kappa measure of agreement}
+\label{sec:kappa}
+Finally, \textcite{Agresti-2007} describes another way to evaluate
+agreement but unlike what it's been showed, it isn't based on model
+but a single value that it's denominated \emph{kappa measure of
+  agreement} or \emph{Cohen's kappa}. It is defined by:
+\begin{equation}
+  \label{eq:12}
+  \kappa=\frac{\Sigma\pi_{ii}-\Sigma\pi_{i+}\pi_{+j}}{1-\Sigma\pi_{i+}\pi_{+j}}
+\end{equation}
+
+\subsubsection{Cohen's kappa in \textsf{R}}
+\label{sec:cohens-kappa-r}
+In \textsf{R} it's easy to calculate this index, as well as, a variant
+of it that is used with ordered categories, and therefore, weights the
+differences among categories (\emph{weighted kappa}). This is done
+with the package \texttt{vcd}. Remember that it works with tables
+instead of data frames.
+
+<<kappa>>=
+## library(vcd)
+path.tab <- xtabs(y ~ A + B, data = pathologist2)
+Kappa(path.tab, weights = "Fleiss-Cohen")
+@ 
+
+\section{Preferences between pairs of outcome categories}
+\label{sec:preferences}
+The last section of the chapter shows another form of paired data, one
+that compairs a set of elements in order to establish some sort of
+ranking of preferences. As it's showed on table 8.9 the same elements
+are placed in rows and columns and the resulting cells represent the
+preference for the row over the column. As one may deduce the main
+diagonal is of no use.\\
+
+\subsection{Bradley--Terry model}
+\label{sec:bradley-terry-model}
+For this type of table, the Bradley-Terry model uses a logistic model
+to calculate the probability that row i is preferred (in the broader
+sense of the word) over column j. It has the form:
+
+\begin{equation}
+  \label{eq:13}
+  logit(\pi_{ij})=log(\pi_{ij}/\pi_{jj})=\beta_i-\beta_j
+\end{equation}
+
+\textcite{Agresti-2007} notes that this model is similar to the
+quasi-symmetry model and in fact it can be fitted in a similar
+way. Thus the probability of preference is:
+
+\begin{equation}
+  \label{eq:14}
+  \pi_{ij}=exp(\hat\beta_i-\hat\beta_j)/1-exp(\hat\beta_i-\hat\beta_j)
+\end{equation}
+
+\subsubsection{Bradley-Terry model in R}
+\label{sec:bradley-terry-R}
+\textcite[p. 196--198]{Thompson-2009} describes two ways of fitting the Bradley-Terry
+model, the first through the logistic model described above and the
+other through the equivalent loglinear model. The latter also explains
+the from of the logistic model:
+
+\begin{eqnarray*}
+  \label{eq:15}
+  log\frac{\mu_{ab}}{\mu_{ba}}&=&(\lambda+\lambda_a^X+\lambda_b^Y+\lambda_{ab})-
+  (\lambda+\lambda_b^X+\lambda_a^Y+\lambda_{ab})\\
+  &=&(\lambda_a^X-\lambda_a^Y)-(\lambda_b^X-\lambda_b^Y)=\beta_a-\beta_b
+\end{eqnarray*}
+
+\subsubsection{Logistic approximation to the Bradley-Terry model in \textsf{R}}
+\label{sec:logist-bradley-R}
+\textcite{Thompson-2009} illustrates the calculation in \textsf{R} with
+the baseball example \parencite[showed in][]{Agresti-2002}. In order to
+use the logistic approximation, the author creates a data frame of
+positive and negative responses that correspond to the off-diagonal
+cells $n_{ij}$, $n_{ji}$, where $i\not=j$. Then she creates for each
+team a column with codes, representing victories (1), looses (-1) or
+not played/not applicable (0).
+
+<<pref-matrix,echo=false>>=
+Milwaukee <- c(-1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0)
+Detroit <- c(1, 0, 0, 0, 0, 0, -1, -1, -1, -1, -1, rep(0, 10))
+Toronto <- c(0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, -1, -1, -1, -1,
+    rep(0, 6))
+NY <- c(0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, -1, -1,
+    -1, rep(0, 3))
+Boston <- c(0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0,
+    0, -1, -1, 0)
+Cleveland <- c(0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0,
+    1, 0, 1, 0, -1)
+Baltimore <- c(0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0,
+    0, 1, 0, 1, 0)
+response <- cbind(c(6, 4, 6, 6, 4, 2, 6, 8, 2, 4, 4, 6, 6, 5,
+    1, 7, 6, 3, 6, 1, 7), 13 - c(6, 4, 6, 6, 4, 2, 6, 8, 2, 4,
+    4, 6, 6, 5, 1, 7, 6, 3, 6, 1, 7))
+cbind(response, Milwaukee, Detroit, Toronto, NY, Boston, Cleveland,
+    Baltimore)
+@ 
+
+This matrix corresponds to the following table:
+
+\begin{table}[ht]
+\begin{center}
+\begin{tabular}{rrrrrrrr}
+  \hline
+ & Milwaukee & Detroit & Toronto & New York & Boston & Cleveland & Baltimore \\ 
+  \hline
+Milwaukee & 0 & 7 & 9 & 7 & 7 & 9 & 11 \\ 
+  Detroit & 6 & 0 & 7 & 5 & 11 & 9 & 9 \\ 
+  Toronto & 4 & 6 & 0 & 7 & 7 & 8 & 12 \\ 
+  New York & 6 & 8 & 6 & 0 & 6 & 7 & 10 \\ 
+  Boston & 6 & 2 & 6 & 7 & 0 & 7 & 12 \\ 
+  Cleveland & 4 & 4 & 5 & 6 & 6 & 0 & 6 \\ 
+  Baltimore & 2 & 4 & 1 & 3 & 1 & 7 & 0 \\ 
+   \hline
+\end{tabular}
+\caption{Results of 1987 Season for American League Baseball Teams}
+\end{center}
+\end{table}
+
+Note that because the positive outcomes are based on the cell below
+the main diagonal, the \texttt{Milwaukee} team has only looses, 6 in
+total, corresponding to column 1 in the table, the rest of values are
+all 0s because the team no longer appears int he pairs. The next team,
+\texttt{Detroit} has 1 win corresponding to the first cell, then
+follows five 0s, then five -1, the latter correspond to column number
+2 in the table, and the rest are all 0s. For \texttt{Boston}, the
+first three cell are 0s, then one 1, four 0s, 1, three
+0s, 1, three 0s, 1, two 0s, 1, two 0s, two -1, and finally 0. This is:
+
+\begin{verbatim}
+Boston = 0,0,0,1,0,0,0,0,1,0,0,0,1,0,0,1,0,0,-1,-1,0
+\end{verbatim}
+
+Then the author creates a data frame of positive and negative answers.
+<<temp5>>=
+response <- cbind(c(6, 4, 6, 6, 4, 2, 6, 8, 2, 4, 4, 6, 6, 5, 1, 7, 6, 3, 6, 1, 7),  
+ 13 - c(6, 4, 6, 6, 4, 2, 6, 8, 2, 4, 4, 6, 6, 5, 1, 7, 6, 3, 6, 1, 7))
+@ 
+Note that all the teams played 13 matches among them, therefore, the
+negative outcomes are just 13 minus the positive results.\\ Now  we
+can fit the model.
+
+<<temp6>>=
+fit.BT <- glm(response ~ -1 + Milwaukee + Detroit + Toronto + NY + Boston +
+                  Cleveland, family = binomial)
+summary(fit.BT, cor=FALSE)
+@ 
+The \texttt{-1} element, in the formula, indicates that the model has
+no intercept. Also note that the model doesn't include the last team,
+\texttt{Baltimore}.\\ The fitted counts are calculated in steps; first
+the cells above (or below, the order is not important) the main
+diagonal and then the other half. For this task the function
+\texttt{lower.tri} is very useful.
+
+<<temp7>>=
+losing.team <- c("Milwaukee", "Detroit", "Toronto", "NY", "Boston",
+                 "Cleveland",  "Baltimore")
+win.team <- losing.team
+fitted.counts <- matrix(0, nc = 7, nr = 7, dimnames = list(win.team, win.team))
+fitted.counts[lower.tri(fitted.counts)] <-  round(13 * fitted(fit.BT), 1)
+fitted.counts[!lower.tri(fitted.counts, diag=T)] <- 13 - round(13 * fitted(fit.BT), 1)
+@ 
+
+In the same way we can calculate the probabilities of a positive result
+
+<<temp8>>=
+fitted.probs <- matrix(0, nc = 7, nr = 7, dimnames = list(win.team, win.team))
+fitted.probs[lower.tri(fitted.probs)] <- round(fitted(fit.BT), 2)
+fitted.probs[!lower.tri(fitted.probs, diag=T)] <- 1 - round(fitted(fit.BT), 2)
+@ 
+
+The \texttt{lower.tri} function, used as an index, returns the cell
+below the main diagonal, while the negation of it
+(\texttt{!lower.tri}) calculates the other half.\\
+
+\subsubsection{Loglinear approximation to the Bradley-Terry model in \textsf{R}}
+\label{sec:loglin-bradley-R}
+Fitting a loglinear model is somehow easier. First the data construction
+
+<<temp9>>=
+table.10.10 <- expand.grid(losing = factor(losing.team, levels = rev(losing.team)),
+                           winning = factor(win.team,  levels = rev(win.team)))
+table.10.10$counts <- c(0, 7, 9, 7, 7, 9, 11, 6, 0, 7, 5, 11, 9, 9, 4, 6,  0, 7,
+                        7, 8, 12, 6, 8, 6, 0, 6, 7, 10, 6, 2, 6, 7, 0, 7, 12, 4, 4, 5, 6,
+                        6, 0, 6, 2, 4, 1, 3, 1, 7, 0)
+@ 
+
+Note that the counts are entered row-wise for the whole table (not
+just the below-diagonal elements) and that the main diagonal is filled
+with zeroes. Then as in the previous sections a column is created to
+indicate the appropriate cells.
+
+<<temp10>>=
+table.10.10$symm <- paste(pmin(as.character(table.10.10$winning),
+                               as.character(table.10.10$losing)),
+                          pmax(as.character(table.10.10$winning),
+                               as.character(table.10.10$losing)), sep=",")
+@ 
+
+The above command creates a character vector of pairs of teams order
+alphabetically.\\ Then we can fit the loglinear model.
+
+<<temp11>>=
+fit.BTQS <- glm(counts ~ symm + winning, data = table.10.10, family = poisson(log))
+summary(fit.BTQS, cor = F)
+@ 
+
+The coefficients for the \texttt{winning\emph{team}} should be equal to
+those \texttt{\emph{team}} coefficients from the logistic model.\\
+
+Finally the fitted counts.
+<<temp12>>=
+matrix(round(fitted(fit.BTQS), 1), nr = 7, nc = 7, byrow = T,
+       dimnames = list(win.team, losing.team))
+@ 
+% ======================
+\printbibliography
+\end{document}

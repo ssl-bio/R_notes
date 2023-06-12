@@ -1,0 +1,621 @@
+% arara: pdflatex: { shell: true }
+% arara: biber
+% arara: pdflatex: { shell: true }
+% arara: pdflatex: { shell: true, synctex: yes }
+
+\documentclass[11pt,twoside]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{graphicx,calc}
+\usepackage[svgnames]{xcolor}
+\usepackage[paper=letterpaper,divide={2cm,*,2cm}]{geometry}
+\usepackage[backend=biber,style=authoryear,maxcitenames=2,%
+maxbibnames=100,uniquename=false,uniquelist=false]{biblatex}
+\usepackage{graphicx,paralist,multirow,multicol,microtype,fancyvrb}%rotating,supertabular
+\usepackage{hyperref}
+\usepackage{Sweave}
+\usepackage{minted}
+
+\hypersetup{colorlinks=true,citecolor=black, linkcolor=black,urlcolor=SteelBlue4}
+ 
+\addbibresource{../../R_notes.bib}
+\DefineBibliographyStrings{english}{andothers={\mkbibemph{et al.}},}
+\AtEveryBibitem{\clearfield{month}}
+\AtEveryCitekey{\clearfield{month}}
+\renewbibmacro{in:}{%
+  \ifentrytype{article}{}{\printtext{\bibstring{in}\intitlepunct}}}
+\AtEveryBibitem{\clearlist{language}}
+\AtEveryBibitem{\clearfield{note}}
+\AtEveryBibitem{\clearfield{url}}
+\AtEveryBibitem{\clearfield{issn}}
+\DeclareFieldFormat{urldate}{}
+\DeclareFieldFormat[article]{pages}{#1}
+
+\renewenvironment{Sinput}{\minted[frame=single]{r}}{\endminted}
+\DefineVerbatimEnvironment{Soutput}{Verbatim}{frame=leftline}
+
+\title{Notes from: Loglinear models for contingency
+  tables}
+\author{Saúl Sotomayor Leytón}
+\date{February 2012}
+\makeatletter
+\renewcommand{\maketitle}{%
+ \thispagestyle{empty}
+ \noindent{\Large\textbf{\@title}}\\
+ {\large Chapter 7 \textcite{Agresti-2007}}\\
+ \@author\\
+ \@date\par\vspace{-0.3cm}
+ \noindent\hrulefill\\
+
+ \vspace{0.5cm}
+}
+\makeatother
+\newcommand{\ie}{\emph{i.e. }}
+\newcommand{\eg}{\emph{e.g. }}
+\newcounter{problem}
+\setcounter{problem}{1}
+\newcommand{\problem}{\noindent\textbf{Problem \arabic{problem}}\\
+  
+  \vspace{-0.3cm}%
+  \refstepcounter{problem}}
+\begin{document}
+\maketitle
+
+\noindent\textbf{Setup}
+
+<<setup>>=
+library(MASS)
+library(vcd)
+options(contrasts=c("contr.treatment", "contr.poly"))
+options(width=70)
+@
+
+\section{Concepts and commands}
+\label{sec:concepts-commands}
+These models are most useful when used to analize associations among
+two or more categorical response variables. The reason is that these
+models treats all variables as responses and models the expected
+counts in a contingency table under a null hypothesis of independence,
+where the values are determined by the row and column totals:
+$\mu_{ij} = n \pi_{i+} \pi_{+j}$. By taking the natural logarithm
+(log), this relationship becomes linear, as equation 7.1 in
+\textcite{Agresti-2007} shows:\\
+\begin{equation}
+  \label{eq:1}
+  log\mu_{ij}=\lambda + \lambda_{i}^X + \lambda_j^Y
+\end{equation}
+Where $\lambda_i^X$ and $\lambda_j^Y$ represent the row and column
+effects. The fitted values that satisfy the model are, $\hat\mu_{ij}=n_{i+}n_{+j}/n$\\
+
+These models represent a class of Generalized Linear Models, where
+cell counts are independent observations from some distribution,
+typically the \emph{Poisson}. Note that this model ``regards the
+observations to bel the cell counts rather than the individual
+classifications of the subjects''\parencite{Agresti-2007}.\\
+
+% When we work with more than two variables, different types of
+% interactions among the variables can occur, among pairs of variables
+% or 
+When working with more than two variables, different types of
+interactions can occur, between pairs of variables (as in the first
+equation, below) or also, between all the three variables (as in the
+second equation). \textcite{Agresti-2007} mentions that the
+later refers to the saturated model, one that provides a perfect fit
+for the observed data.
+
+\begin{eqnarray*}
+  log\mu_{ij}=\lambda + \lambda_{i}^X + \lambda_j^Y + \lambda_k^Z +
+  \lambda_{ij}^{XY} + \lambda_{ik}^{XZ} + \lambda_{jk}^{YZ}\\
+  log\mu_{ij}=\lambda + \lambda_{i}^X + \lambda_j^Y + \lambda_k^Z +
+  \lambda_{ij}^{XY} + \lambda_{ik}^{XZ} + \lambda_{jk}^{YZ} + \lambda_{ijk}^{XYZ}
+\end{eqnarray*}
+
+Just like, in a three-way table of response variables X, Y and Z,
+there are different types of interactions, we can define several types
+of \emph{independence} \parencite{Thompson-2009}:
+
+\begin{description}
+\item[Mutual independence] of all three variables results in
+  \emph{all} the interactions in the loglinear model equal zero. This
+  means that all the joint cell probabilities equal the product of
+  their marginal probabilities.
+\item[Joint independence] of one variable Y and the combined
+  classification of the other two (X and Z), results in a log linear
+  model with only one non-zero interaction parameter, the one between
+  X and Z.
+\item[Conditional independence] of X and Y with Z, is when
+  independence among X and Y holds in each partial table conditional
+  on a given value of Z.
+\end{description}
+
+Something that is not mentioned in \textcite{Agresti-2007} but in
+\textcite{Thompson-2009}, as well as. \textcite{Agresti-2002} is that
+``loglinear models can be fitted using two methods for the
+\emph{maximum likelihood estimation} (MLE), 1) Newton-Raphson or 2)
+Iterative Proportional Fitting (IPF). Both methods can be used in
+\textsc{R} through different packages/functions.\\
+
+\textcite[p. 205]{Agresti-2007} mentions that ``parameter interpretation
+is easier when we view one response as a function of the others, for
+instance in a Ix2 table the logit of the probability of Y=1 (success) equals:
+
+\begin{eqnarray*}
+  log\left(\frac{P(Y=1)}{1-P(Y=1)}\right) = log\left(\frac{\mu_{i1}}{\mu_{i2}}\right)
+    = log\mu_{i1}-log\mu_{i2}=\lambda    + \lambda_{i}^X + \lambda_1^Y-(\lambda + \lambda_{i}^X +
+    \lambda_2^Y) = \lambda_1^Y - \lambda_2^Y
+\end{eqnarray*}
+As one can see, this logit does not depend on $i$; that is, the logit
+of Y does not depend on the level of X.\\
+
+In this independence model, one $\lambda_i^X$ and one $\lambda_i^Y$
+are redundant, thus most software sets the parameter for the las
+category equal to 0, while other set the sum of the parameters to
+zero. No matter what approach is taken, the difference between two
+main effect parameters of aparticular type is the same. Now, in
+\textsf{R} it is possible to do both ways. This is done with the
+following commands\footnote{From previous test it seems that the second way (\ie First category to
+zero) is the one set by default}:
+
+\begin{verbatim}
+#Sum to zero
+options(contrasts=c("contr.sum", "contr.poly"))
+
+#First category to zero
+options(contrasts=c("contr.treatment", "contr.poly"))
+\end{verbatim}
+
+Note that the second option sets the first category, instead of the
+last one, to zero, however, we can change the order of the factors to
+match the results from Agresti with one of the following commands:
+
+\begin{verbatim}
+tb$factor <- factor(tb$factor,levels=<correct order>)
+tb$factor <- relevel(tb$factor,"<first level>")
+fit.glm2 <- update(fit.glm, contrasts = list(alcohol = as.matrix(c(1, 0)), marijuana =
+as.matrix(c(1, 0)), cigarette = as.matrix(c(1, 0))))
+\end{verbatim}
+
+The first command (I think) works all the time, with different
+functions, however if one has many factors and they aren't in the
+correct order it may be tedious to do. The second command is described
+in \textcite[p. 70]{Spector-2008} and it is the easiest, since we only
+have to specify the first level. The drawback is that with some
+functions it does not work. Finally the third command, taken from
+\textcite[p. 146]{Thompson-2009}, updates, in this case a glm, object and
+recodifies the levels of the factor with the \textsf{as.matrix}
+function. Altough I haven't tried it extensively, it seems to work
+well, but just as the first command it seems a bit tedious.\\
+
+As stated previously, loglinear models can be fitted either with the
+Newton-Raphson or the IPF algorithm. \textcite[p. 143--145]{Thompson-2009} describes
+both, but I find the former easier since it uses the \textsf{glm} function.
+
+<<setting options>>=
+## options(contrasts=c("contr.treatment", "contr.poly"))
+tb7.3 <- data.frame(expand.grid(cigarrette=c('yes', 'no'),
+                                  alcohol=c('yes', 'no'),  marijuana=c('yes', 'no')),
+                      count=c(911, 44, 3, 2, 538, 456, 43, 279))
+fit.glm <- glm(count ~ .^2, data = tb7.3, family = poisson)
+@ 
+
+In the previous commands \textsf{count} represents a vector of the
+observed cell values and \textsf{$.^2$} represents all the two-way
+interactions.\\
+
+In a similar way we fit the nested models to, in a following step,
+compare them and see which one is the best fit for the data. Note that
+in the following commands the function \textsf{update} is used on a
+\textsf{glm} object to simplify the input.
+
+<<fitting models>>=
+fit.ACM <- glm(count ~ alcohol * cigarrette * marijuana, data = tb7.3,
+    family = poisson)
+fit.AC.AM.CM <- update(fit.ACM, . ~ . - alcohol:cigarrete:marijuana)
+fit.AM.CM <- update(fit.AC.AM.CM, . ~ . - alcohol:cigarrette)
+fit.AC.M <- update(fit.AC.AM.CM, . ~ . - alcohol:marijuana -
+    cigarrette:marijuana)
+fit.A.C.M <- update(fit.AC.M, . ~ . - alcohol:cigarrette)
+@ 
+
+The notation used for the \textsf{R} objects (\eg \textsf{fit.AM.CM})
+was done according to what is mentioned in \textcite{Agresti-2007},
+namely, that the symbols \textsf{AC} or \textsf{ACM} represent the
+highest order interactions in the model. For a three-way table, the
+symbols \textsf{ACM} would represent an interaction among all its
+member, thus a perfect fit. Contrary, a model represented with the
+symbols \textsf{A.C.M} would represent one with no interaction among
+its members, \ie a \emph{mutual independence} model.\\
+
+Once we have fitted all the models of interest we can create a data
+frame of fitted values in a way similar to what is described in
+\textcite[p. 143]{Thompson-2009}.
+<<fitted values>>=
+fitted.values <- data.frame(tb7.3[, -4], ACM = c(round(fitted(fit.ACM),
+                                                       2)), AC.AM.CM. = c(round(fitted(fit.AC.AM.CM), 2)),
+                            AM.CM. = c(round(fitted(fit.AM.CM), 2)),
+                            AC.M. = c(round(fitted(fit.AC.M), 2)),
+                            A.C.M. = c(round(fitted(fit.A.C.M), 2)))
+fitted.values
+@ 
+
+Comparing with the command in \textcite{Thompson-2009}, the function
+\textsf{aperm} was  not used, maybe because the data frame was
+constructed with \textsf{glm} objects instead of \textsf{loglm}.
+More important, the data frame was stored under the variable,
+\textsf{fitted.values}, which will be used to calculate conditional as
+well as marginal odds ratio using the functions \textsf{xtabs} and
+\textsf{oddsratio}; the later from the \textsf{vcd} package.\\
+
+Model comparison, which test the significance of interactions is done
+with the \textsf{anova} function, which performs model comparison
+based on a $\chi^2$ approximation.
+<<anova>>=
+anova(fit.A.C.M, fit.AC.M, fit.AM.CM, fit.AC.AM.CM, fit.ACM,
+    test = "Chisq")
+@
+
+Note that for easy interpretation
+the simpler models where introduced first. Still, interpreting the
+results may be a bit tricky. The \textsf{Deviance} column shows the
+result of comparing the residual deviance from the previous line with
+the one from the current; this value provides evidence for the null
+hypothesis ($H_0$) that the parameters in the more complex model,
+that aren't in the current one (in this case in the previous line)
+equal zero. As we can see, the only model for wich the deviance value
+yields a non-significant result is the one that allows conditional
+independence (\ie interactions among all pairs of variables, \textsf{fit.AC.AM.CM}).\\
+
+Having chosen a particular model, we can now see the strenght of
+association, among pairs of variables, by comparing \emph{conditional}
+and \emph{marginal} odds ratios. To calculate them \textcite[p. 143-144]{Thompson-2009}
+describes a method that, first, defines a function to calculate odds
+ratios and applies it to the fitted values for the model chosen
+(fit.AC.AM.CM), however there is a simpler way with the functions \textsf{xtabs}
+and \textsf{oddsratio}.\\ But first I have constructed a new data frame of fitted vales without
+rounding up the values.
+<<odds ratio>>=
+fitted.values2 <- data.frame(tb7.3[, -4], ACM = c(fitted(fit.ACM)),
+    AC.AM.CM. = c(fitted(fit.AC.AM.CM)), AM.CM. = c(fitted(fit.AM.CM)),
+    AC.M. = c(fitted(fit.AC.M)), A.C.M. = c(fitted(fit.A.C.M)))
+oddsratio(xtabs(AC.AM.CM. ~ cigarrette + marijuana + alcohol,
+    data = fitted.values2), log = FALSE)
+oddsratio(xtabs(AC.AM.CM. ~ cigarrette + marijuana, data = fitted.values2),
+    log = FALSE)
+@
+
+This was done to ensure that the odds ratios will be the
+same across the levels of the third variable (see the results from the
+first command), which is something that we expect given that we have
+chosen a conditional independence model.\\
+The interpretation of the results is as following, for the first one,
+conditional on the use of alcohol, the odds of a person who smokes
+cigarrettes to use marijuana is 17 times the odds of a person who
+doesn't smoke cigarrettes to use marijuana. For the second one, \ie
+the marginal association, the odds of a person who smokes cigarrettes
+to use marijuana is 25 times the odds of a person who doesn't smoke to
+use marijuana.\\
+
+Also helpful when choosing a particular model is to look at \emph{cell
+residuals}. As stated by \textcite[p. 213]{Agresti-2007}, ``sometimes they
+indicate that only certain cell display a lack of fit in an otherwise
+good-fitting model''. As it is explained in previous chapters, there
+are more than one type of residuals (\eg Pearson residuals or
+Standardized Pearson Residuals), the later being the most useful,
+since we know that values higher than 2 (when working with a moderate
+number of cells)  or 3 (when working with many cells) indicate lack of
+fit. In \textsf{R} we calculate standardized pearson
+residuals with the following command (for the AC.AM.CM. and AM.CM models)
+<<residuals>>=
+res.AC.AM.CM <- resid(fit.AC.AM.CM, type = "pearson")/sqrt(1 -
+    lm.influence(fit.AC.AM.CM)$hat)
+res.AM.CM <- resid(fit.AM.CM, type = "pearson")/
+    sqrt(1 - lm.influence(fit.AM.CM)$hat)
+@
+
+More over, we can easily attach these residuals to create a table of
+fitted values together with their residuals
+<<fitted and residuals>>=
+data.frame(fitted.values[, c(1:3)], AC.AM.CM = fitted.values[,
+    5], Residuals = round(res.AC.AM.CM, 3), AM.CM = fitted.values[,
+    6], Residuals = round(res.AM.CM, 3))
+@ 
+Note that residuals for the marginal independece model are all below 1
+(in absolute value), while those corresponding to the simpler model
+\textsf{AC.CM} have values higher than 3. Interesting,
+\textcite{Agresti-2007} note that $\chi^2$ relates to the two nonredundant
+residuals by $\chi^2 = (-3.69)^2 + (-12.80)^2 = 177.6$.\\
+
+When we work with more than three variables, the number of possible
+interactions grows considerably and it may be difficult not only to
+fit all the possible models for further comparison but to interpret
+any three-way interaction. To ilustrate this \textcite{Agresti-2007} as
+well as \textcite{Thompson-2009} uses the data of car accidents described
+by four variables: gender, location, use of seat belt and injury, all
+with two possible values. Interesting, \textcite{Agresti-2007} only
+addresses the latter problem (\ie the interpretation of a three-way
+interaction) but doesn't disscuss how he end-up with the final model,
+as \textcite{Thompson-2009} and \textcite{Agresti-2002} do.\\
+First we construct the table of observed counts.
+<<accident_table>>=
+tb.accident <- data.frame(expand.grid(Seat = c(0, 1), Location = c("urban",
+    "rural"), Gender = c("female", "male"), Injury = c(0, 1)), Count = c(7287,
+    11587, 3246, 6134, 10381, 10969, 6123, 6693, 996, 759, 973,
+    757, 812, 380, 1084, 513))
+@
+
+Then we fit a model with all the three-way interactions, which will
+serve as a base from where we will start removing all the
+``non-significant'' interactions.
+<<fitAIC>>=
+fit.3w <- glm(Count ~ .^3, data = tb.accident, family = poisson)
+fit.accident <- stepAIC(fit.3w, scope = list(lower = Count ~
+    Seat + Gender + Location + Injury), direction = "backward")
+@ 
+Which results in a model with 3 out of four of the possible 3 way
+interactions (\ie only the interaction \textsf{Seat:Gender:Injury} was removed).
+<<summary fitAIC>>=
+summary(fit.accident)
+@ 
+This is not the same model that is described in
+\textcite[p. 215--217]{Agresti-2007}, however if we look at the p-values
+for all the remaining three-way interactions we will note that the
+only one that has a value lower than 0.05 is
+\textsf{Seat:Location:Gender}. Thus if we base on this values to
+further eliminate other interactions we will end with a model similar
+to the one described in \textcite{Agresti-2007}. These differences may
+arise from the way the selection was performed, in this case based on
+the AIC value.\\
+
+\textcite{Agresti-2007} explains that the three-way interaction implies
+that the odds ratio of two of the variables that composes this
+interaction varies across the levels of the remaining variable, as it
+is show in table 7.11. Now, in \textsf{R} we can calculate these odd
+ratios from a table of fitted values as it was, previously, described.\\
+First we fit the models of interest, which are the model with all the
+two-way interactions and the one with the interaction
+\textsf{Seat:Location:Gender} plus all the lower order terms.
+<<models_accident>>=
+fit4.accident <- glm(Count ~ .^2, family = poisson, data = tb.accident)
+fit3.accident <- glm(Count ~ Seat + Location + Gender + Injury +
+    Seat:Injury + Seat:Gender + Location:Injury + Gender:Injury +
+    Location:Gender + Seat:Location + Seat:Location:Gender, family = poisson,
+    data = tb.accident)
+@ 
+Then we can create a table of fitted values. Note that I have included
+the values from the model selected by the \textsf{fitAIC} function.
+<<fitted model accident>>=
+(tb.fit.accid <- cbind(tb.accident, GI.GL.GS.IL.IS.LS = fitted(fit4.accident),
+    GLS.GI.IL.IS = fitted(fit3.accident), GLS.GLI.SLI = fitted(fit.accident)))
+@ 
+Note that the more complex model differs slightly with that with only
+one triple interaction and that with only two-way interactions (see
+below). Now we can calculate the odds ratio for the different
+combinations of variables, just as it is done in table 7.11 in
+\textcite{Agresti-2007}.
+<<odds_ratio_accident>>=
+#Odds ratio LS Agresti's results 1.17 and 1.03
+oddsratio(xtabs(GLS.GLI.SLI ~ Location + Seat + Gender, data = tb.fit.accid),
+    log = FALSE)
+# Odds ratio LS Agresti's results 1.09 and 1.09
+oddsratio(xtabs(GI.GL.GS.IL.IS.LS ~ Location + Seat + Gender,
+    data = tb.fit.accid), log = FALSE)
+@
+
+It's curious that, despite the fitted values obtained are the same as
+those from \textcite[table 7.9, p. 216]{Agresti-2007} the calculated odds
+ratio are different. I did a separate calculation but the results were
+the same as the above.\\
+
+\paragraph{Update}
+\label{sec:update}
+Revising the data I've found that the results presented in
+\textcite{Agresti-2007} are obtained when all the variables are included
+in the \textsf{xtabs} function; for the previous examples:
+<<odds_update>>=
+#Odds ratio LS Agresti's results 1.17 and 1.03
+oddsratio(xtabs(GLS.GI.IL.IS ~ Location + Seat + Gender + Injury,
+    data = tb.fit.accid), log = FALSE)
+# Odds ratio LS Agresti's results 1.09 and 1.09
+oddsratio(xtabs(GI.GL.GS.IL.IS.LS ~ Location + Seat + Gender +
+    Injury, data = tb.fit.accid), log = FALSE)
+@ 
+Note that, for the first command, the row values repeat in each
+column, which represent the independence of the variables.The same
+happens for the second command but also for the row values.\\
+
+In section 7.2.8 \textcite{Agresti-2007} discusses the differences among
+the chosen models in fitting the observed data. We have seen that
+\textsf{R} selected a complex model with three out of four of the
+triple interaction terms yet its fitted values differ slightly from a
+simpler model with no three-way interaction terms. \textcite{Agresti-2007}
+ascribes this difference to the high sample size; he mentions that
+``we are more likely to detect an effect as the sample size increases,
+eventhought those effects may be weak and unimportant''.\\
+As an alternative (or complement) to the model selection,
+\textcite{Agresti-2007} describes a measure that does not take into
+account the sample size, the \emph{dissimilatity index}.
+\begin{eqnarray*}
+  D = \sum|n_i-\hat\mu_i|/2n = \sum|p_i-\hat\pi_i|/2
+\end{eqnarray*}
+``This index takes values between 0 and 1, where smaller values
+represent a better fit. It represents the prportion of sample cases
+that must move to different cells for the model to achieve a perfect
+fit''\parencite{Agresti-2007}. In \textsf{R} this is easily calculated with
+<<dissimilary_index>>=
+#Dissimilary indes for the simpler model
+sum(abs(tb.fit.accid$Count - tb.fit.accid$GI.GL.GS.IL.IS.LS))/(2 *
+    sum(tb.fit.accid$Count))
+# Dissimilary index for the more complex model
+sum(abs(tb.fit.accid$Count - tb.fit.accid$GLS.GLI.SLI))/(2 *
+    sum(tb.fit.accid$Count))
+@
+
+Comparing the two indexes we can see that the differences are small,
+moving less than 1\% of the data yields a perfect fit. In this sense,
+\textcite{Agresti-2007} mentions that the small D values for the simpler
+model suggest that, despite the large value of $G^2$, in practical
+terms, the model provides a decen fit.\\
+
+In the next section (7.3) \textcite{Agresti-2007} discusses the
+similarities between loglinear models and logistic regresion
+models. Though, both models assume different distributions they result
+in the same conditional odds ratio estimations as ilustrated with a
+three-way table where variable Y is binary:
+\begin{eqnarray*}
+   logit P(Y=1) = &&log\left[\frac{P(Y=1)}{1-P(Y=1)}\right]
+   = log\left[\frac{P(Y=1|X=i,Z=k)}{P(Y=2|X=i,Z=k)}\right]\\[2mm]
+   =
+   &&log\left(\frac{\mu_{i1k}}{\mu_{i2k}}\right)=log(\mu_{i1k})-log(\mu_{i2k})\\
+   [2mm]
+   = &&(\lambda + \lambda_i^X + \lambda_1^Y + \lambda_k^Z +
+   \lambda_{i1}^{XY} + \lambda_{ik}^{XZ} +
+   \lambda_{1k}^{YZ})-(\lambda + \lambda_i^X + \lambda_2^Y +
+   \lambda_k^Z + \lambda_{i2}^{XY} + \lambda_{ik}^{XZ} +
+   \lambda_{2k}^{YZ})\\[2mm]
+   = &&(\lambda_1^Y-\lambda_2^Y)+(\lambda_{i1}^{XY}-\lambda_{i2}^{XY})+
+   (\lambda_{1k}^{YZ}-\lambda_{2k}^{YZ})
+\end{eqnarray*}
+Which is equivalent to the logit model:
+\begin{eqnarray*}
+  logitP(Y=1) = \alpha + \beta_i^X + \beta_k^Z
+\end{eqnarray*}
+
+All this process can be summarized as following, ``in logit
+calculation, all the terms in the loglinear model not having the
+response variable index in the subscript cancel''.\\
+
+Interesting, in section 7.3.3, \textcite{Agresti-2007} notes that the
+logit model resulting from the loglinear model (XY,XZ,YZ) is the same
+as the one resulting from the model (XY,YZ). This is because logistic
+models doesn't describe relationships among response variables, so it
+assumes nothing about their association structure.\\
+
+Regarding these disctintion among response variables and explanatory
+ones, the author mentions that when a clear disctintion happens or
+when some marginal totals are fixed by design, the model should
+contain the term for that margin; for example in the car accident
+example if the gender and location factors are treated as a
+explanatory variables, then the term \textsf{GL} must be in the model,
+thus it should be at least as complex as (GL,S,I).\\
+
+Next, in section 7.4, the author describes conditions to collapse
+three-way or higher order tables. These conditions assure that the
+marginal odds ratios and the conditional odds ratios would be the
+same. In order to know which variable can be collapsed
+\textcite{Agresti-2007} describes \emph{independence graphs}. As its name
+suggest, these are graphical representations of loglinear models where
+each variable is represented by a letter and interactions among
+variables are represented by a line between them. Variables that
+does not have a connecting line represent conditional independence.\\
+Having described independence graphs we can define the condition for
+collapsibility as: ``For three-way tables, XY marginal and conditional
+odds ratios are identical if either Z and X are conditionally
+independen or if Z and Y are conditionally independent'' this is
+equivalent to the following independece graphs:
+\begin{center}
+  X\hspace{1ex}\rule[0.5ex]{1cm}{1pt}\hspace{1ex}Y
+  \hspace{1ex}\rule[0.5ex]{1cm}{1pt}\hspace{1ex}Z or
+  Y\hspace{1ex}\rule[0.5ex]{1cm}{1pt}\hspace{1ex}X
+  \hspace{1ex}\rule[0.5ex]{1cm}{1pt}\hspace{1ex}Z
+\end{center}
+For higher order tables the same basic graph can be used \parencite[see][
+sections 7.4.4 and 7.5.5]{Agresti-2007} where letters represent sets of
+variables instead of individual variables.\\
+The conditions for collapsibility explain why in the above example of car
+accidents different values for the odds ratios were obtained, namely
+this was because the initial model collapsed the data over the
+\textsf{injury} levels, when infact this wasn't possible. Later as it
+was shown, by including this variable the values matched those from \textcite{Agresti-2007}.\\
+
+\textcite{Agresti-2007} ends the chapter describing
+\emph{Linear-by-Linear} association models, which are used to model
+ordinal responses. These are very similar to independence models,
+except that they have an extra estimate for the correlation between
+row and column scores.
+\begin{equation}
+  \label{eq:3}
+  log\mu_{ij}=\lambda + \lambda_i^X + \lambda_j^Y + \beta u_iv_j
+\end{equation}
+where $u_i$ and $v_j$ represents row and column scores, respectively.\\
+
+The author notes that $\beta$ specifies the direction and strenght of
+association. It also allow us to calculate the odds ratio for any
+$2x2$ table resulting from the selection of two rows (a and c) and
+columns (b and d).
+\begin{equation}
+  \label{eq:4}
+  \frac{\mu_{ab}\mu_{cd}}{\mu_{ad}\mu_{cb}}=exp[\beta(u_c-u_a)(u_d-u_b)]
+\end{equation}
+
+By looking at \textcite[p.156]{Thompson-2009} we noticed that fitting
+these models in \textsf{R} is easy; we just have to create a
+data frame with the observed counts for each row and column
+combination as well as columns for the factors and their codes. For
+the example described in the book, as it's noted in
+\textcite{Thompson-2009}, it's necessary to do a few additional steps to
+create the data frame
+
+<<table_7_15>>=
+tb7.15 <- read.table("supp_data/tb7-15", header = TRUE)
+tb7.15$u1 <- tb7.15$prem
+tb7.15$v1 <- tb7.15$birth
+tb7.15$birth <- factor(tb7.15$birth, levels = 4:1)
+tb7.15$prem <- factor(tb7.15$prem, levels = 4:1)
+@ 
+
+After that we can fit the model. 
+
+<<fit _table_7_15>>=
+(fit.lbl <- glm(count ~ prem + birth + u1:v1, family = poisson,
+    data = tb7.15))
+@
+
+With the data stored in the variable, then, we calculate the value of
+$\beta$ with its corresponding 95\% Wald confidence interval
+<<beta>>=
+exp(coef(fit.lbl)["u1:v1"])
+exp(summary(fit.lbl)$coef["u1:v1", 1] + 1.96 * c(-1, 1) * summary(fit.lbl)$coef["u1:v1",
+    2])
+@ 
+Then, for the fitted values, first we append them to the data frame
+(\ie \textsf{tb7.15}), next we extract these values with the
+\textsf{xtabs} function. Note that because we inverted the factor
+values (in order to match the results presented in the book) we need
+to perform additional steps to present the fitted values in the
+correct order.
+<<fitted_values_7_15>>=
+tb7.15$fitted <- fitted(fit.lbl)
+matrix(rev(xtabs(fitted ~ prem + birth, data = tb7.15)), nrow = 4,
+    dimnames = list(PreMar = c("Always wrong", "Almost always wrong",
+        "Wrong sometimes", "Not wrong"), TeenBirth = c("S. Disagree",
+        "Disagree", "Agree", "S. Agree")))
+@
+
+In the same way we can create a table of residuals, namely, first we
+add a column of residuals and then we create the table.
+<<residuals tb 7.15>>=
+tb7.15$residuals <- round(resid(fit.lbl, type = "pearson")/sqrt(1 -
+    lm.influence(fit.lbl)$hat), 2)
+matrix(rev(xtabs(residuals ~ prem + birth, data = tb7.15)), nrow = 4,
+    dimnames = list(PreMar = c("Always wrong", "Almost always wrong",
+        "Wrong sometimes", "Not wrong"), TeenBirth = c("S. Disagree",
+        "Disagree", "Agree", "S. Agree")))
+@ 
+
+Finally, we can test the null hypothesis that $\beta=0$. For this end,
+we have to fit a model without that term and then compare that with
+the previous with the \textsf{anova} function.
+
+<<null_hypothesis_tb_7_15>>=
+fit.null <- update(fit.lbl, ~. - u1:v1)
+anova(fit.null, fit.lbl, test = "Chisq")
+@
+
+The small P-value indicate a strong correlation.\\
+
+To end these notes it is important to mention that Agresti's more advanced
+book \textcite{Agresti-2002} describes other association models, thus it
+is worth looking at them after reading this book.
+% ======================
+\printbibliography
+\end{document}

@@ -1,0 +1,621 @@
+% arara: pdflatex: { shell: true }
+% arara: biber
+% arara: pdflatex: { shell: true }
+% arara: pdflatex: { shell: true, synctex: yes }
+
+\documentclass[11pt,twoside]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{graphicx,calc}
+\usepackage[x11names]{xcolor}
+\usepackage[paper=letterpaper,divide={2cm,*,2cm}]{geometry}
+\usepackage[backend=biber,style=authoryear,maxcitenames=2,%
+maxbibnames=100,uniquename=false,uniquelist=false]{biblatex}
+\usepackage{graphicx,paralist,multirow,multicol,microtype,fancyvrb}%rotating,supertabular
+\usepackage{hyperref}
+\usepackage{Sweave}
+\usepackage{minted}
+
+\hypersetup{colorlinks=true, citecolor=black, linkcolor=black, urlcolor=SteelBlue4}
+ 
+\addbibresource{../../R_notes.bib}
+\DefineBibliographyStrings{english}{andothers={\mkbibemph{et al.}},}
+\AtEveryBibitem{\clearfield{month}}
+\AtEveryCitekey{\clearfield{month}}
+\renewbibmacro{in:}{%
+  \ifentrytype{article}{}{\printtext{\bibstring{in}\intitlepunct}}}
+\AtEveryBibitem{\clearlist{language}}
+\AtEveryBibitem{\clearfield{note}}
+\AtEveryBibitem{\clearfield{url}}
+\AtEveryBibitem{\clearfield{issn}}
+\DeclareFieldFormat{urldate}{}
+\DeclareFieldFormat[article]{pages}{#1}
+
+\renewenvironment{Sinput}{\minted[frame=single]{r}}{\endminted}
+\DefineVerbatimEnvironment{Soutput}{Verbatim}{frame=leftline}
+
+\title{Notes from: Modeling correlated, clustered responses}
+\author{Saúl Sotomayor Leytón}
+\date{April 2012}
+\makeatletter
+\renewcommand{\maketitle}{%
+ \thispagestyle{empty}
+ \noindent{\Large\textbf{\@title}}\\
+ {\large Chapter 9 \textcite{Agresti-2007}}\\
+ \@author\\
+ \@date\par\vspace{-0.3cm}
+ \noindent\hrulefill\\
+
+ \vspace{0.5cm}
+}
+\makeatother
+\newcommand{\ie}{\emph{i.e. }}
+\newcommand{\eg}{\emph{e.g. }}
+\newcounter{problem}
+\setcounter{problem}{1}
+\newcommand{\problem}{\noindent\textbf{Problem \arabic{problem}}\\
+  
+  \vspace{-0.3cm}%
+  \refstepcounter{problem}}
+\begin{document}
+\maketitle
+
+\noindent\textbf{Setup}
+
+<<setup>>=
+library(MASS)
+library(gee)
+library(geepack)
+options(width=70)
+@
+
+\section{Introduction}
+\label{sec:introduction}
+Chapter 9 and 10 presents models for handling correlated, clustered
+data using different approaches. But first, when does correlated data
+appear? Normally they appear when we take a measure from a subject
+many times at different intervals such as in longitudinal studies. In
+this type of data we expect that the data from one measure to the
+next be alike (\ie correlated) and therefore we need a model that
+takes that correlation into account. Other examples might include a
+study about the toxicity of a compound on the development of fetuses;
+in this study we expect that those fetuses from a same litter (from
+the same mother) have a more similar response than fetuses from a
+different litter.\\
+As \citeauthor{Agresti-2007} notes, a \emph{cluster} refers to a
+matched set of observations; in a longitudinal study a cluster might
+be all the observations for a subject during the study, while in a
+toxicology study, a cluster might be all the fetuses from a particular litter.
+The author warns that ``studies that do not take into account the
+correlation among measures may estimate the parameters well but the
+standard errors can be badly biased''.\\
+Finally it's important to distinguish between \emph{marginal} and
+\emph{conditional} models. As its name suggest, the former focuses on
+the marginal distributions and it's used to study the odds for a
+particular response at the level of the population. On the other hand,
+the latter model focuses on the individual response, that is it
+calculates the odds of a particular response, conditional on the
+subject studied. Although, as it's discussed in \textcite[chapter
+10][]{Agresti-2007}, the conclusions drawn from both models do not
+differ substantially, they have some features that made more useful
+under certain circumstances while not on another.
+
+\section{Marginal models versus conditional models}
+\label{sec:marg-models-vers}
+Subsections 9.1.1 describe some of the basic notation used
+in this and the following chapter for models for correlated data, for example, \citeauthor{Agresti-2007} uses the letter \textbf{T}
+for the number of observations, thus for a binary response the T
+success probabilities, $P(Y_1=1), P(Y_2=1), \ldots, P(Y_T=1)$ are the
+marginal probabilities of a T-dimensional contingency table that cross
+classifies the T observations.\\
+
+In section 9.1.2 the author describes a example of a longitudinal
+study about the effects of a new drug, compared to an old one, in
+treating mental depression. Subjects were classified in two groups
+based on an initial diagnosis and then given one of the drugs. Their
+responses were evaluated at weeks 1, 2 and 4 indicating whether they
+have a normal response or not. Table 9.1 shows the marginal counts for
+each of the eight possible responses throughout the study (for
+example a \textsf{NNN} repose is interpreted as a normal response in
+all the evaluations). But more informative is table 9.2 that shows the
+proportions of normal responses for all the evaluations and for all
+the groups. By looking at this table we can look if there is a trend
+(an increase or decrease in the proportions), the rate of that trend
+(how fast the proportions change), all of this across the different
+groups. This information will help us decide which model would fit the
+data well, for example \citeauthor{Agresti-2007} first describes a
+main effects model,
+\begin{eqnarray*}
+  logit[P(Y_t=1)]=\alpha+\beta_1s+\beta_2d+\beta_3t
+\end{eqnarray*}
+where \emph{s} stands for the initial diagnosis (mild or severe),
+\emph{d} for the drug used (standard or new) and \emph{t} for the
+time\footnote{\textcite[p. 278]{Agresti-2007} notes that ``when the time
+  metric reflects cumulative drug dosage, a logit scale often has an
+approximate linear effect for the logarithm of time'', however latter
+he says that using the week  numbers has the same effect. Obviously the
+latter is simple for the data input, nevertheless one should keep the
+idea present.}
+of the evaluation. Note that under this model, the time effect is the
+same for both drugs, something that table 9.2 doesn't suggest. To
+reflect this one can include an interaction term,
+\begin{eqnarray*}
+  logit[P(Y_t=1)]=\alpha+\beta_1s+\beta_2d+\beta_3t+\beta_4(dxt)
+\end{eqnarray*}
+In this model $\beta_3$ describes the time effect for the standard
+drug ($d=0$) and $\beta_3 + \beta_4$ describes the time effect for the
+new drug ($d=1$).\\
+
+Section 9.1.3 contrast the previous model with the equivalent one used
+in conditional modeling,
+\begin{eqnarray*}
+  logit[P(Y_{it}=1)]=\alpha_i+\beta_1s+\beta_2d+\beta_3t+\beta_4(dxt)
+\end{eqnarray*}
+Note that in this case the logit refers to subject \emph{i} at
+evaluation time \emph{t} and that there is a subject-specific
+intercept, $\alpha_i$, that indicates that the logit will vary from
+subject to subject, that is, this type of model accounts for
+heterogeneity among the data. Chapter 10 discussed further this and
+other differences.
+
+\section{Marginal modeling: the Generalized Estimating Equations (GEE) approach}
+\label{sec:GEE}
+This section discusses some of the problems of fitting marginal
+models through maximum likelihood. Basically this is because ML
+focuses on the joint distribution of the clustered responses, not on
+the marginal. However when there are a few explanatory variables it's
+possible to fit the model through ML with some specialized
+software\footnote{For \textsf{R} there are set of functions developed by
+Joseph B. Lang from the university of Iowa
+(\url{http://www.divms.uiowa.edu/~jblang/mph.fitting/index.htm})}. As
+an alternative one can use \emph{quasi-likelihood} methods. For
+clustered data one method called Generalizing Estimating Equations
+(GEE) only links each marginal mean to a linear predictor and provides
+a guess for the variance--covariance structure
+($Y_1,\ldots,Y_T$). Unlike Generalized Linear Models (GLM), GEE do not
+assume a probability distribution for $E(Y)=\mu$ and $VAR(Y)$ only a
+relationship among them. This permits any departure from the
+assumptions, such as \emph{overdispersion}. To do this, the
+quasi-likelihood approach assumes that the variance is a multiple of a
+constant $\phi$ that is inferred from the data.\\
+
+\citeauthor{Agresti-2007} says that after a model for each response at
+time \emph{t} ($Y_t$) has been specified we must:
+\begin{enumerate}
+\item Assume a particular distribution for each $Y_t$ which will
+  determine how the $VAR(Y_t)$ depends on $E(Y_t)=\mu$. Then we need to,
+\item Make and \emph{educated guess} for the correlation structure
+  among $Y_t$, that is the \emph{working correlation matrix}.
+\end{enumerate}
+The author mentions that point 2 is important, but isn't crucial to
+make the ``right''  initial assumption because the model is updated
+with the information in the data and even if a `` wrong'' guess was
+made, we end up with appropriate standard errors.\\
+The possibilities for the working correlation matrix that
+\citeauthor{Agresti-2007} describes are:
+\begin{description}
+\item[Exchangeable structure] that implies $\rho=Corr(Y_s,Y_t)$ as
+  identical but unknown for all pairs \emph{s} and \emph{t}.
+\item[Autoregressive], that implies $\rho^{t-s}=Corr(Y_s,Y_t)$. This
+  implies that the observations farther apart in time are less correlated.
+\item[Independence], that assumes $\rho=Corr(Y_s,Y_t)=0$, which is the
+  same as saying that observations among a cluster are independent.
+\item[Unstructured], permits the correlation matrix $Corr(Y_s,Y_t)$ to
+  differ for each pair.
+\end{description}
+Among these, the author recommends, at least as starting point to
+choose the Exchangeable structure.\\
+
+\subsection{GEE fitting in \textsf{R}}
+\label{sec:gee-R}
+For the metal depression example, \citeauthor{Thompson-2009} describes
+the fitting of GEE in \textsf{R}. Although she imports the data directly
+from a text file (which is available in \citeauthor{Agresti-2007}'s
+\href{http://www.stat.ufl.edu/~aa/cda2/sas/sas.html}{website}) it's
+important to know how to construct the data frame, which is a long
+data frame \parencite[see][section 9.4]{Spector-2008}. To this end we can
+start by importing table 9.1, whose values are going to help us
+constructing the long table.
+
+<<tb9.1_construction>>=
+tb9.1 <- data.frame(cbind(expand.grid(treat = c(0, 1), diagnose = c(0,
+    1)), matrix(c(16, 13, 9, 3, 14, 4, 15, 6, 31, 0, 6, 0, 22,
+    2, 9, 0, 2, 2, 8, 9, 9, 15, 27, 28, 7, 2, 5, 2, 31, 5, 32,
+    6), ncol = 8, byrow = TRUE)))
+colnames(tb9.1)[3:10] <- c("NNN", "NNA", "NAN", "NAA", "ANN",
+    "ANA", "AAN", "AAA")
+tb9.1
+@ 
+Then we get the row totals,
+<<tb9.1_rowtot>>=
+margin.table(as.matrix(tb9.1[, 3:10]), 1) * 3
+@ 
+The values were multiplied by 3 because that's the number of
+measurements taken. Also note that \texttt{tb9.1} was converted to a matrix, selecting only the
+columns with numeric values (\texttt{3:10}). It would had been easier
+to calculate the row totals instead, however with this method there
+are less risk of confusion.\\
+
+Now we can construct the data frame which will be used for the model fitting.
+
+<<tb9.1_long>>=
+tb9.1 <- data.frame(case = rep(1:340, each = 3), time = c(0,
+    1, 2), treat = rep(c(0, 1, 0, 1), c(240, 210, 300, 270)),
+    diagnose = rep(c(0, 1), c(450, 570)), outcome = c(rep(c(1,
+        1, 1), 16), rep(c(1, 1, 0), 13), rep(c(1, 0, 1), 9),
+        rep(c(1, 0, 0), 3), rep(c(0, 1, 1), 14), rep(c(0, 1,
+            0), 4), rep(c(0, 0, 1), 15), rep(c(0, 0, 0), 6),
+        rep(c(1, 1, 1), 31), rep(c(1, 1, 0), 0), rep(c(1, 0,
+            1), 6), rep(c(1, 0, 0), 0), rep(c(0, 1, 1), 22),
+        rep(c(0, 1, 0), 2), rep(c(0, 0, 1), 9), rep(c(0, 0, 0),
+            0), rep(c(1, 1, 1), 2), rep(c(1, 1, 0), 2), rep(c(1,
+            0, 1), 8), rep(c(1, 0, 0), 9), rep(c(0, 1, 1), 9),
+        rep(c(0, 1, 0), 15), rep(c(0, 0, 1), 27), rep(c(0, 0,
+            0), 28), rep(c(1, 1, 1), 7), rep(c(1, 1, 0), 2),
+        rep(c(1, 0, 1), 5), rep(c(1, 0, 0), 2), rep(c(0, 1, 1),
+            31), rep(c(0, 1, 0), 5), rep(c(0, 0, 1), 32), rep(c(0,
+            0, 0), 6)))
+tb9.1b <- tb9.1
+tb9.1b$diagnose <- ifelse(tb9.1b$diagnose == 0, "mild", "severe")
+tb9.1b$diagnose <- factor(tb9.1b$diagnose, levels = c("mild",
+    "severe"))
+tb9.1b$treat <- ifelse(tb9.1b$treat == 0, "standard", "new")
+tb9.1b$treat <- factor(tb9.1b$treat, levels = c("standard", "new"))
+@
+
+Remember that when constructing a data frame the first values are
+those that change faster; now looking at table 9.1 we see that the
+treatment changes faster than diagnose, so we need to reflect that
+in the data frame, hence the command, \texttt{ treat=rep(c(0,1,0,1),
+  c(240,210,300,270))}, then for the diagnose variable we just sum the
+first two values and the last two,
+\texttt{diagnose=rep(c(0,1),c(450,570))}.\\
+To verify that the table was constructed correctly we can calculate
+the proportions of normal responses, showed in table 9.2.
+<<tb9.2>>=
+tb11.2b <- read.table('supp_data/tb11-2b')
+temp <- xtabs(I(ifelse(tb11.2b$outcome == 0, 1, 1)) ~ treat +
+    time + diagnose, data = tb11.2b)
+round(xtabs(outcome ~ treat + time + diagnose, data = tb9.1b)/temp,
+    2)
+@ 
+Since the table is correct, we can now fit the gee,
+<<gee_tb9.1>>=
+## library(gee)
+fit.gee <- gee(outcome ~ diagnose + treat * time, id = case,
+    family = binomial, corstr = "exchangeable", data = tb9.1b)
+summary(fit.gee)
+@
+
+The results are the same as those reported in table 9.3; note that the
+common correlation value is the one in the secondary diagonal of the
+working correlation. As \citeauthor{Agresti-2007} notes this
+indicates a very low correlation among data. Regarding the estimates,
+one should be aware that the estimate for the treatment effect (-0.06)
+only applies for week 0, for subsequent weeks the effect of the new
+drug is, $-0.06 + 1.02t$. Finally note that the initial diagnosis has
+also an important effect (a negative one) in the log odds of a normal response.\\
+
+Section 9.2.4 shows another example where rats on iron--deficient
+diets where assigned to four groups. Group 1 was the control and
+groups 2 to 4 received an iron supplement at different times. Later
+the rats where made pregnant and sacrificed at week 3. For each fetus
+in each rat's litter, the response was whether the fetus was
+dead. Note that in this case each litter is a cluster. For comparison,
+\citeauthor{Agresti-2007} first fits a logistic model that assumes
+independence among the subjects (fetuses),
+\begin{eqnarray*}
+  logit(\pi_{it})=\alpha +\beta_2z_{i2} +\beta_3z_{i3} +\beta_4z_{i4}
+\end{eqnarray*}
+where $\beta_i$ is an indicator variable that compares group \emph{i}
+with the placebo group. Next, the author fits the GEE model that
+treats each litter as a cluster and permits correlations among
+subjects within a cluster.\\
+
+In \textsf{R} we first import the data from \citeauthor{Agresti-2007}'s
+web page. This data frame, however, is not subject specific, thus we
+need to convert it to one where each row represents one fetus. Also we
+need to include a \texttt{case} variable. Note that in the following
+commands we repeat the rows in two occasions, first for the positive
+results, which is indicated by the \texttt{num.dead} variable, and
+then for the negative results, which corresponds to the difference
+between the \texttt{litter.size} and \texttt{num.dead}
+variables. These steps are done in two data frames that latter are
+merged together. Finally we order the data according to case number.
+
+<<data.construction_tb9.4>>=
+tb9.4 <- read.table("supp_data/tb9-4")
+colnames(tb9.4) <- c("group", "litter.size", "num.dead")
+tb9.4$group <- factor(tb9.4$group)
+tb9.4a <- tb9.4
+tb9.4a <- within(tb9.4a, {
+    litter.size <- litter.size - num.dead
+})
+tb9.4a$case <- c(1:58)
+tb9.4b <- tb9.4a
+tb9.4b <- tb9.4b[rep(1:58, tb9.4b$num.dead), ]
+tb9.4b$yes <- 1
+tb9.4c <- tb9.4a
+tb9.4c <- tb9.4c[rep(1:58, tb9.4c$litter.size), ]
+tb9.4c$no <- 0
+colnames(tb9.4b) <- c("group", "litter.size", "num.dead", "case",
+    "outcome")
+colnames(tb9.4c) <- c("group", "litter.size", "num.dead", "case",
+    "outcome")
+tb9.4b <- tb9.4b[, c(4, 1, 5)]
+tb9.4c <- tb9.4c[, c(4, 1, 5)]
+tb9.4long <- rbind(tb9.4b, tb9.4c)
+tb9.4long$group <- factor(tb9.4long$group)
+tb9.4long <- tb9.4long[order(tb9.4long[, "case"]), ]
+rownames(tb9.4long) <- c(1:nrow(tb9.4long))
+@
+
+Once the data is constructed we can fit the two models, and extract
+the coefficients along with their standard errors
+<<glm-gee_fit>>=
+glm.9.4 <- glm(I(num.dead/litter.size) ~ group, weights = litter.size,
+    family = binomial, data = tb9.4)
+summary(glm.9.4)$coefficients[, 1:2]
+gee.9.4 <- gee(outcome ~ group, id = case, family = binomial,
+    corstr = "exchangeable", data = tb9.4long)
+summary(gee.9.4)$coefficients[, c(1, 4)]
+@
+
+These values are the same as those in table 9.5.\\
+
+\citeauthor{Agresti-2007} notes that when there is a positive
+correlation within cluster, then the standard errors for
+between--cluster effects and standard errors of estimate means tend to
+be larger than when we consider observations as
+independent. Contrary, within--cluster effects tend to be smaller than
+those when we treat observations as independent.\\
+
+\subsection{Limitations of GEE compared with ML}
+\label{sec:gee-limits}
+Although most software readily fits GEEs there are some limitations
+with this approach; the most important is that, because GEEs do not
+specify a multivariate distribution there is no likelihood
+function. This implies that there are no likelihood ratio methods to
+check the fit, compare models or conduct inference about parameters,
+in consequence one must rely on large--sample approximations like the
+Wald test, which may not work well with small data samples, however
+some software ``improves'' the Wald--type of inference by using the
+data information.
+
+\section{Extending GEE: Multinomial responses}
+\label{sec:GEE-multinomial}
+This section deals with responses that have more than two categories,
+\ie multinomial responses. Depending on, whether the response is
+nominal or ordinal, generalizations of GEEs use base line category
+logits or cumulative logits.\\
+
+\subsection{Multinomial GEEs in \textsf{R}}
+\label{sec:multinomial-gee-r}
+For the insomnia example, \citeauthor{Thompson-2009} uses the
+\texttt{ordgee} function from the \texttt{geepack} package, however
+the results obtained are quite different from those reported in
+\textcite[p. 286]{Agresti-2007}. Constructing the data frame from the
+data provided in table 9.6 (not importing from Agresti's web site)
+gives the same result as in
+\textcite[pp. 219--220]{Thompson-2009}. The code is shown below,
+
+<<data.construction_9.6>>=
+tb9.6a <- data.frame(expand.grid(outcome = c(1, 1, 1, 2, 1, 3,
+    1, 4, 2, 1, 2, 2, 2, 3, 2, 4, 3, 1, 3, 2, 3, 3, 3, 4, 4,
+    1, 4, 2, 4, 3, 4, 4), treat = c(0, 1)), occasion = c(0, 1),
+    count = rep(c(7, 4, 2, 1, 14, 5, 1, 0, 6, 9, 18, 2, 4, 11,
+        14, 22, 7, 4, 1, 0, 11, 5, 2, 2, 13, 23, 3, 1, 9, 17,
+        13, 8), each = 2))
+tb9.6a <- tb9.6a[rep(1:nrow(tb9.6a), tb9.6a$count), ]
+row.names(tb9.6a) <- 1:nrow(tb9.6a)
+tb9.6a$case <- rep(1:sum(tb9.6a$occasion), each = 2)
+tb9.6a$outcome2 <- ifelse(tb9.6a$outcome == 1, 10, ifelse(tb9.6a$outcome ==
+    2, 25, ifelse(tb9.6a$outcome == 3, 45, 75)))
+tb9.6b <- tb9.6a[order(tb9.6a$case, tb9.6a$occasion), ]
+tb9.6b$outcome <- ordered(tb9.6b$outcome, levels = 1:4)
+@
+
+Note that the outcome is codified from 1 to 4 and it's enter in
+``pairs'', for example the values \texttt{1,1} represent the same
+outcome in the two evaluations; also note that these are entered
+row--wise so they match the order of the \texttt{count} variable. In
+the next command the rows are repeated count--times so each row
+represents an individual. The fourth command creates the \texttt{case}
+vector. The value of the \texttt{sum(tb9.6a\$occasion)} command is half
+the number of rows in the data frame; it would be equally valid if it
+would we had been entered, \texttt{nrow(tb9.6)/2}. Finally,
+\citeauthor{Thompson-2009} notes that it's important that the
+\texttt{case}, \texttt{time} and \texttt{outcome} vectors to be ordered.\\
+Once the data is constructed we can fit the model
+<<ordgee>>=
+## library(geepack)
+fit.ordgee9.6 <- ordgee(outcome ~ treat * occasion, id = case,
+    data = tb9.6b, corstr = "independence", rev = TRUE, control = geese.control(maxit = 100))
+@
+
+The \texttt{rev=TRUE} argument indicates that we want the cumulative
+probabilities $P(y_{it}\leq j)$.\\
+Although the package help page indicates that other correlation
+structures can be indicated, with this data the only one that seems to
+work is the independence correlation matrix.\\
+
+\paragraph{Coding and model fitting in R}
+\label{sec:note-about-gee}
+At the end of section 9.3.2 \citeauthor{Agresti-2007} mentions that an
+advantage of treating observations as correlated is that the standard
+errors are smaller than those obtained by considering the observations
+as independent. The author mentions that by doing the latter we obtain
+the same estimates but with higher SE. Interesting, fitting this model
+in \texttt{R} gives the same results as in Agresti, but with different
+sign! \textcite[p. 220]{Thompson-2009} notes this for the sign of the
+interaction estimate.
+<<independent.model>>=
+## library(MASS)
+polr(outcome ~ treat * occasion, data = tb9.6b)
+@ 
+
+\subsection{Limitations in GEEs for categorical data}
+\label{sec:gee-limitations}
+\citeauthor{Agresti-2007} warns that for categorical data the
+correlation among observation can not take any value between [-1, +1],
+instead they are limited to a narrower interval defined by the
+marginal probabilities. As an alternative, some software uses the
+\emph{iterative alternating logistic regression algorithm}.\\
+
+\section{Transitional modeling, given the past}
+\label{sec:transitional-mod}
+This section describes another type of modeling that is useful when
+there is an interest in the relationship between a response at time
+\emph{t} and previous responses \emph{y-k}; such models that include
+past responses are called
+\emph{transitional models}. Discrete--time \emph{Markov Chains}
+discrete time stochastic processes with a discrete stat space, that is
+that the random variable may changes states at discrete time points,
+and the states come from a set of discrete possible
+states. First--order Markov chains is a transitional model for which,
+for all \emph{t}, the conditional distribution of $Y_t$, given
+$Y_1,\ldots,Y_{t-1}$ is assumed identical to the conditional
+distribution of $Y_t$ given $Y_{t-1}$ alone; that is, given $Y_{t-1}$
+$Y_t$ is conditionally independent of $Y_1,\ldots,Y_{t-2}$. In words
+this means that knowing the most recent observation, information
+about about previous observations, before that, don't help with
+predicting the next observation.\\
+
+\textcite{Agresti-2007} illustrates these models with an study about
+respiratory illness on children. These children were evaluated from
+age 7 through age 10 on whether they present a respiratory illness (1)
+or not (0); another variable recorded was whether their mothers smoke
+at the beginning of the study. The first--order Markov chain model for
+this study would be,
+\begin{eqnarray*}
+  logit[P(Y_t=1)]=\alpha +\beta y_{t-1} +\beta_1s +\beta_2t
+\end{eqnarray*}
+where $t=8,9,10$ $s$ equals 1 for mothers who smoke regularly and 0 for
+those who don't.\\
+
+This model treats, given the predictors in the model, past
+observations as independent; and it's called \emph{regressive logistic
+model}. From that name we can infer that this type of model can be
+fitted with ordinary logistic regression software. Because of this we
+can make inferences based on likelihood ratio test (see section
+\ref{sec:gee-limits}).
+
+\subsection{Transitional models in \textsf{R}}
+\label{sec:trans-models-r}
+In order to fit these models, \citeauthor{Thompson-2009} describes two
+methods, the first one allows higher order models, \ie models that
+include more than the previous response; while the second allows the
+inclusion of other explanatory variables beside past observation. The
+latter is the one illustrated in \textcite{Agresti-2007}.\\
+For the respiratory illness example we need to construct two data
+frames, the first with the data in table 9.8 and with this a second
+table representing the 12 possible combinations of the values for the
+predictor variables, \ie 2 smoking status times 3 evaluations, at
+years 8, 9, 10, and 2 respiratory status.\\
+
+<<data.construction>>=
+#contingency table
+tb9.8 <- data.frame(expand.grid(Y10 = c(0, 1), smoking = c(0,
+    1), Y9 = c(0, 1), Y8 = c(0, 1), Y7 = c(0, 1)), count = c(237,
+    10, 118, 6, 15, 4, 8, 2, 16, 2, 11, 1, 7, 3, 6, 4, 24, 3,
+    7, 3, 3, 2, 3, 1, 6, 2, 4, 2, 5, 11, 4, 7))
+# outcome table
+tb9.8b <- data.frame(expand.grid(previous = c(0, 1), t = 8:10,
+    smoking = c(0, 1)))
+count.yes <- c(sum(tb9.8[tb9.8$Y8 == 1 & tb9.8$smoking == 0 &
+    tb9.8$Y7 == 0, "count"]), sum(tb9.8[tb9.8$Y8 == 1 & tb9.8$smoking ==
+    0 & tb9.8$Y7 == 1, "count"]), sum(tb9.8[tb9.8$Y9 == 1 & tb9.8$smoking ==
+    0 & tb9.8$Y8 == 0, "count"]), sum(tb9.8[tb9.8$Y9 == 1 & tb9.8$smoking ==
+    0 & tb9.8$Y8 == 1, "count"]), sum(tb9.8[tb9.8$Y10 == 1 &
+    tb9.8$smoking == 0 & tb9.8$Y9 == 0, "count"]), sum(tb9.8[tb9.8$Y10 ==
+    1 & tb9.8$smoking == 0 & tb9.8$Y9 == 1, "count"]), sum(tb9.8[tb9.8$Y8 ==
+    1 & tb9.8$smoking == 1 & tb9.8$Y7 == 0, "count"]), sum(tb9.8[tb9.8$Y8 ==
+    1 & tb9.8$smoking == 1 & tb9.8$Y7 == 1, "count"]), sum(tb9.8[tb9.8$Y9 ==
+    1 & tb9.8$smoking == 1 & tb9.8$Y8 == 0, "count"]), sum(tb9.8[tb9.8$Y9 ==
+    1 & tb9.8$smoking == 1 & tb9.8$Y8 == 1, "count"]), sum(tb9.8[tb9.8$Y10 ==
+    1 & tb9.8$smoking == 1 & tb9.8$Y9 == 0, "count"]), sum(tb9.8[tb9.8$Y10 ==
+    1 & tb9.8$smoking == 1 & tb9.8$Y9 == 1, "count"]))
+count.no <- c(sum(tb9.8[tb9.8$Y8 == 0 & tb9.8$smoking == 0 &
+    tb9.8$Y7 == 0, "count"]), sum(tb9.8[tb9.8$Y8 == 0 & tb9.8$smoking ==
+    0 & tb9.8$Y7 == 1, "count"]), sum(tb9.8[tb9.8$Y9 == 0 & tb9.8$smoking ==
+    0 & tb9.8$Y8 == 0, "count"]), sum(tb9.8[tb9.8$Y9 == 0 & tb9.8$smoking ==
+    0 & tb9.8$Y8 == 1, "count"]), sum(tb9.8[tb9.8$Y10 == 0 &
+    tb9.8$smoking == 0 & tb9.8$Y9 == 0, "count"]), sum(tb9.8[tb9.8$Y10 ==
+    0 & tb9.8$smoking == 0 & tb9.8$Y9 == 1, "count"]), sum(tb9.8[tb9.8$Y8 ==
+    0 & tb9.8$smoking == 1 & tb9.8$Y7 == 0, "count"]), sum(tb9.8[tb9.8$Y8 ==
+    0 & tb9.8$smoking == 1 & tb9.8$Y7 == 1, "count"]), sum(tb9.8[tb9.8$Y9 ==
+    0 & tb9.8$smoking == 1 & tb9.8$Y8 == 0, "count"]), sum(tb9.8[tb9.8$Y9 ==
+    0 & tb9.8$smoking == 1 & tb9.8$Y8 == 1, "count"]), sum(tb9.8[tb9.8$Y10 ==
+    0 & tb9.8$smoking == 1 & tb9.8$Y9 == 0, "count"]), sum(tb9.8[tb9.8$Y10 ==
+    0 & tb9.8$smoking == 1 & tb9.8$Y9 == 1, "count"]))
+tb9.8b$prop <- count.yes/(total <- count.yes + count.no)
+@
+
+Note that the contingency table is the easiest to build, however (and
+as usual) one must make sure that the count vector matches the rest of
+the columns.The second data frame consist of three columns,
+representing the parameters in the model, namely, the previous
+outcome (2), the number of evaluations (3), and the smoking status of the
+mother (2). Then for each of the possible outcome (that has a previous
+observation) we construct
+vectors of positive and negative outcomes, for example the command,
+\verb|sum(tb9.8[tb9.8\$Y8==1 \& tb9.8\$smoking==0 \& tb9.8\$Y7==0,"count"])| ``counts'' the number of positive (\verb|tb9.8\$Y8==1|)
+outcomes that match the first line of the data frame,
+<<data.construction2,echo=false>>=
+tb9.8b[1, ]
+@
+
+namely, a positive outcome at year 8, considering that the previous 
+outcome was negative and that the smoking status of the mother was negative.\\
+Then, we fit the model,
+<<transitional.model.fit>>=
+fit9.8 <- glm(prop ~ previous + t + smoking, data = tb9.8b, family = binomial,
+    weight = total)
+summary(fit9.8)$coefficients
+@
+
+\citeauthor{Thompson-2009} reminds that as with any other GLM model
+the hypothesis that any term is non-significant can be tested by
+fitting a model that lacks that term and comparing to the more complex
+one; in \textsf{R} with the \texttt{anova} function.\\
+
+Section 9.4.3 explains how this model can be used for the insomnia
+example of section 9.3.2. Because the response variable is an ordinal
+multicategory variable, we can use the \texttt{polr} function from the
+\texttt{MASS} package \parencite[see][chapter 7]{Thompson-2009}. This
+function needs un-grouped data and an \texttt{ordered} response, so,
+<<polr.data.construction>>=
+#grouped data
+tb9.6x <- data.frame(expand.grid(outcome2 = 1:4, outcome1 = 1:4,
+    treat = c(1, 0)), count = c(7, 4, 2, 1, 14, 5, 1, 0, 6, 9,
+    18, 2, 4, 11, 14, 22, 7, 4, 1, 0, 11, 5, 2, 2, 13, 23, 3,
+    1, 9, 17, 13, 8))
+# ungrouped data
+tb9.6x$outcome1 <- ifelse(tb9.6x$outcome1 == 1, 10, ifelse(tb9.6x$outcome1 ==
+    2, 25, ifelse(tb9.6x$outcome1 == 3, 45, 75)))
+tb9.6y <- tb9.6x[rep(1:nrow(tb9.6x), tb9.6x$count), ]
+tb9.6y$outcome2 <- ordered(tb9.6y$outcome2, levels = 1:4)
+@
+
+Note that the previous response was re-codified to 10,25,45 and 75
+and, as noted before, the response variable was ordered. Now we can
+fit the model
+<<polr.fit>>=
+fit.polr96 <- polr(outcome2 ~ outcome1 + treat, data = tb9.6y)
+summary(fit.polr96)$coefficients
+@
+
+These values correspond to the model,
+\begin{eqnarray*}
+  logit[P(Y_2\leq j)]=\alpha_j +\beta_1x +\beta_2y_1
+\end{eqnarray*}
+where $x$ represents the treatment effect and $y_1$ the outcome at
+the first observation. The values match those of \textcite[p. 290]{Agresti-2007}.\\
+
+The author ends the chapter by highlighting that in this transitional
+models, the estimate for the previous response is, usually, the one
+with the strongest effect, affecting (reducing) that of the other
+explanatory variables.
+% ======================
+\printbibliography
+\end{document}

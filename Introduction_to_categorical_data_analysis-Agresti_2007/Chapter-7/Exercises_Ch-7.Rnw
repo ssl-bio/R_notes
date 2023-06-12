@@ -1,0 +1,1190 @@
+% arara: pdflatex: { shell: true }
+% arara: biber
+% arara: pdflatex: { shell: true }
+% arara: pdflatex: { shell: true, synctex: yes }
+
+\documentclass[11pt,twoside]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{graphicx,calc}
+\usepackage[x11names]{xcolor}
+\usepackage[paper=letterpaper,divide={2.5cm,*,2cm}]{geometry}
+\usepackage[backend=biber,style=authoryear,maxcitenames=2,%
+maxbibnames=100,uniquename=false,uniquelist=false]{biblatex}
+\usepackage{url,graphicx,paralist,multirow,multicol,microtype,fancyvrb}%rotating,supertabular
+\usepackage{hyperref}
+\usepackage{Sweave}
+\usepackage{minted}
+ % \usepackage[sweave,countbysection,english,noautotitles-r]{SASnRdisplay}
+
+\hypersetup{colorlinks=true,citecolor=black, linkcolor=black,urlcolor=SteelBlue4}
+ 
+\addbibresource{../../R_notes.bib}
+\DefineBibliographyStrings{english}{andothers={\mkbibemph{et al.}},}
+\AtEveryBibitem{\clearfield{month}}
+\AtEveryCitekey{\clearfield{month}}
+\renewbibmacro{in:}{%
+  \ifentrytype{article}{}{\printtext{\bibstring{in}\intitlepunct}}}
+\AtEveryBibitem{\clearlist{language}}
+\AtEveryBibitem{\clearfield{note}}
+\AtEveryBibitem{\clearfield{url}}
+\AtEveryBibitem{\clearfield{issn}}
+\DeclareFieldFormat{urldate}{}
+\DeclareFieldFormat[article]{pages}{#1}
+
+\renewenvironment{Sinput}{\minted[frame=single]{r}}{\endminted}
+\DefineVerbatimEnvironment{Soutput}{Verbatim}{frame=leftline}
+% \DefineVerbatimEnvironment{Scode}{Verbatim}{}
+
+\title{Exercises from: Loglinear models for contingency tables}
+\author{Saúl Sotomayor Leytón}
+\date{February 2012}
+\makeatletter
+\renewcommand{\maketitle}{%
+ \thispagestyle{empty}
+ \noindent{\Large\textbf{\@title}}\\
+ {\large Chapter 7 \textcite{Agresti-2007}}\\
+ \@author\\
+ \@date\par\vspace{-0.3cm}
+ \noindent\hrulefill\\
+
+ \vspace{0.5cm}
+}
+\makeatother
+\newcommand{\ie}{\emph{i.e. } }
+\newcommand{\eg}{\emph{e.g. } }
+\newcounter{problem}
+\setcounter{problem}{1}
+\newcommand{\problem}{\noindent\textbf{Problem \arabic{problem}}\\
+  
+  \vspace{-0.3cm}%
+  \refstepcounter{problem}}
+\begin{document}
+\maketitle{}
+
+\noindent\textbf{Setup}
+<<setup, include=FALSE>>=
+library(vcd)
+library(MASS)
+options(contrasts = c("contr.treatment", "contr.poly"), useFancyQuotes = FALSE)
+@
+
+\problem
+a) Remember that the goodness of fit test has the null hypothesis that
+all the parameters that are not included in the model of interest
+equal zero. Thus in the present exercise, the values indicate that the
+model fits well (P-values equal \Sexpr{round(1-pchisq(0.82,df=1))} for both the deviance test and the
+Pearson's chi-squared test), in other words the belief in after life
+is not independent on gender.\\
+
+b)$\hat\lambda_j^Y$ represents the column (believe in after life)
+effect, and the difference between columns
+$\hat\lambda_1^Y-\hat\lambda_2^Y$ represents the log odds for believing
+in after-life. This value equals exp(1.4165) = 4.122, thus, given
+gender, the odds of
+believing in after-life is 4.12 those of  not believing.\\
+
+\problem
+According to \textcite[p. 207]{Agresti-2007} if a loglinear model for a
+two-way table contains an interaction term $\hat\lambda_{ij}^{XY}$
+(\ie the model is saturated), the interaction term represents the log
+odds ratio, thus the estimated odds for a female to believe in
+after-life is exp(0.1368) = 1.15 15\% times higher than males.\\
+
+\problem
+a) First we construct the data and then fit the model.
+<<Data ej 3, eval=true>>=
+tb.ej3 <- data.frame(expand.grid(Busing = c(1, 2), President = c(1, 2), Home = c(1,
+    2)), Count = c(41, 72, 2, 4, 65, 175, 9, 55))
+fit.ej3 <- glm(Count ~ .^2, data = tb.ej3, family = poisson)
+@
+Once the model is fitted we look at the deviance value which is
+\Sexpr{round(fit.ej3$deviance,2)}. This value has a approximate
+chi-squared distribution with degrees of freedom equal to, the number
+of cells (8) minus the number of parameters in the model (7). Thus the
+p-value for the null hypothesis is
+\Sexpr{round(1-pchisq(fit.ej3$deviance,df=1),2)}. The model fits well.\\
+
+b) In order to calculate the odds ratio, we can append the fitted
+values (\ie those from the model (\textsf{BD,BP,DP})) to the data
+frame, and then calculate the odds ratio with the function with the
+same name (from the \textsf{vcd} package).
+
+<<fitted ej3,eval=true>>=
+tb.ej3$Fitted <- fitted(fit.ej3)
+@ 
+<<fited2 ej3>>=
+# For the PB pair
+oddsratio(xtabs(Fitted ~ President + Busing + Home, data = tb.ej3))
+@ 
+
+The value corresponds to the log odds, so to obtain the odds we
+exponentiate it exp(0.7210904) =
+\Sexpr{round(exp(0.7210904),2)}. Thus, conditioning on voting a
+black person for president, the odds of busing white and black
+students is twice the odds for not busing them. In a similar way we
+calculate the odds for the different pairs: PH = 4.72 and BH =
+1.60. They can be interpreted as follows, conditioning on voting a
+black person for president, the odds of having brought a black friend
+for dinner is 4 times the odds of not having, and, conditioning on
+being in favor of busing together black and white kids the odds of
+having brought a black friend for dinner is 60\% higher than not having.\\
+
+c) This question ask to perform a test to see if BP association is
+significant. In order to do this, we need to fit a model that does not
+have this interaction, and then compare it to the one fitted in the
+previous question (\ie \textsf{fit.ej3}). In the following command,
+which fits the reduced model, note that we just ``updated'' the
+previous fit removing the interaction that we want to test
+
+<<fit reduced model>>=
+fit2.ej3 <- update(fit.ej3, . ~ . - Busing:President)
+anova(fit2.ej3, fit.ej3, test = "Chisq")
+@ 
+
+The p-value of 0.03132 provides evidence for the null hypothesis that
+all the parameters not included in the simpler model equal zero (\ie
+$H_0:BP=0$); since it's below 0.05 we can reject that.\\
+We can apply the same approach to test if more complex models fit
+better than (\textsf{BP,BH,HP}), for instance one that contains the
+triple interaction (\textsf{BPH})
+
+<<fit full model>>=
+fit.full.ej3 <- glm(Count ~ .^3, family = poisson, data = tb.ej3)
+anova(fit.ej3, fit.full.ej3, test = "Chisq")
+@ 
+
+Note that in this case, the null hypothesis hold, in other words, the
+model with all the double interactions fits better than the one with a
+triple interaction.\\
+
+d) To construct a 95\% confidence interval we use the normal
+approximation: CI = $exp(Estimate \pm 1.96*(Standard Error))$
+
+<<Confidence interval>>=
+# Store the estimate value in a temporary variable
+temp <- summary(fit.ej3)$coef["Busing:President", 1]
+# Store its standard error in another variable
+temp2 <- summary(fit.ej3)$coef["Busing:President", 2]
+# Calculate the CI. Note it's rounded
+round(exp(temp + 1.96 * c(-1, 1) * temp2), 2)
+@ 
+This is interpreted as: Given that one person votes a black person for
+president, we can be 95\% sure that the odds for
+that person to  be in favor of busing
+white and black kids together is at least 3\% higher than being
+against busing, and at most, 4 times higher. This interval is very
+wide, though it doesn't include the value 1, which would mean equality
+in the odds.\\
+
+\problem
+a) First we need to construct the data frame and order the factors so
+the last variable is the one set to zero, then we need to fit the
+model (\textsf{GH,GI,HI}), one that includes all the two way
+interactions
+<<data construction,eval=true>>=
+tb.ej4 <- data.frame(expand.grid(I = c(1, 2), G = c(1, 2), H = c(1, 2)), C = c(76,
+    6, 114, 11, 160, 25, 181, 48))
+# Correct factor ordering
+tb.ej4$I <- factor(tb.ej4$I, levels = c(2, 1))
+tb.ej4$G <- factor(tb.ej4$G, levels = c(2, 1))
+tb.ej4$H <- factor(tb.ej4$H, levels = c(2, 1))
+# Model fit
+fit.ej4 <- glm(C ~ .^2, family = poisson, data = tb.ej4)
+@ 
+Then we can test the goodness of fit with the value of the
+deviance (\Sexpr{fit.ej4$deviance}) and a chi-squared approximation
+p-value = \Sexpr{round(1-pchisq(fit.ej4$deviance,df=1),2)}. The model
+seems to fit well.\\
+
+b) As was done before, first we need to append the fitted values to
+the data frame and with those values we calculate the odds ratio with
+the \textsf{oddsratio} from the \textsf{vcd} package. Later to
+calculate the 95\% confidence interval we follow the commands
+described in \textcite{Thompson-2009}, with some modifications, namely we
+store the estimate and its standard error in two temporal variables.
+
+<<Odds ratio ej4,eval=true>>=
+tb.ej4$Fit <- fitted(fit.ej4)
+# Odds ratio
+log.odds <- oddsratio(xtabs(Fit ~ G + I + H, data = tb.ej4))
+exp(log.odds$coefficients)
+# 95% CI
+temp <- summary(fit.ej4)$coef["I1:G1", 1]
+temp2 <- summary(fit.ej4)$coef["I1:G1", 2]
+exp(temp + 1.96 * c(-1, 1) * temp2)
+@
+Note that even though the odds for being in favor of information
+opinion is 58\% higher for males than females, the confidence interval
+is so wide that
+includes the value 1, which means equality in the odds.\\
+
+c) As previous, to test the Independence of G and I we fit a model
+without that interaction and compare to a model that includes that.
+
+<<anova ej4>>=
+fit.reduc.ej4 <- update(fit.ej4, . ~ . - I:G)
+anova(fit.reduc.ej4, fit.ej4, test = "Chisq")
+@
+Note that the p-value, although slightly, is higher than the 0.05 cut
+point. This, together with the wide confidence interval, makes me
+think that the GI term shouldn't be included in the model. However, if
+we take the AIC value as a reference we note that the simpler model,
+despite having fewer terms, has a higher AIC value (\Sexpr{round(fit.reduc.ej4$aic,2)})
+compared to the model that includes the interaction (\Sexpr{round(fit.ej4$aic,2)}).\\
+
+\problem
+a) Although the book provides a table for the output, I have fitted
+the model in \textsf{R}. Interesting, the values for the lower order
+terms are not the same as those reported in
+\textcite[p. 235]{Agresti-2007}, though the values for the higher order
+terms are the same, as well as the deviance value.
+
+
+
+The commands used to obtain this result were:
+
+<<code for ej 5,eval=true>>=
+tb.ej5 <- data.frame(expand.grid(D = c(1, 0), V = c(1, 0), P = c(1, 0)), C = c(53,
+    11, 0, 4, 414, 37, 16, 139))
+fit.ej5 <- glm(C ~ .^2, data = tb.ej5, family = poisson)
+summary(fit.ej5)
+@
+
+Perhaps there is some problem with the coding of the factor or their
+ordering.\\
+More important, the conditional odds ratio is the same as that mentioned in the
+book, namely
+(\Sexpr{round(exp(oddsratio(xtabs(C~D+P+V,data=tb.ej5))$coefficients[2]),2)}). This
+could be interpreted that, conditioning on the victim's race, the odds
+for a white person to receive the death penalty is 41\% that for a
+black victim.\\
+
+b) The model also yields the same marginal odds ratio (\ie
+\Sexpr{round(exp(oddsratio(xtabs(C~D+P,data=tb.ej5))$coefficients),2)}). This
+reverses the situation, with whites having an odds ratio of receiving
+the death penalty 45\% higher than blacks. As stated in the book, this
+is an example of the Simpson's paradox, where ``a relation present in
+different groups (conditional association) reverses when the groups
+are combined (marginal association)''\footnote{See \url{https://secure.wikimedia.org/wikipedia/en/wiki/Simpson\%27s_paradox}}.\\
+
+c) The goodness of fit, based on the deviance value is calculated as
+usual p-value = \Sexpr{round(1-pchisq(fit.ej5$deviance,df=1))}. The
+model fits well.\\
+
+d) Based on what is show in table 7.12 \parencite[p. 222]{Agresti-2007},
+the corresponding logistic model would be $logit P = \alpha +
+\beta_i^D + \beta_j^V$. To fit this model we need to convert the data
+frame to include a column of ``yes'' counts as well as ``totals''
+\parencite[see][section 13.2]{Dalgaard-2008}.
+
+<<data transformation,eval=true>>=
+tb3.ej5 <- cbind(tb.ej5[1:4, 1:4], tb.ej5[5:8, 4])
+colnames(tb3.ej5) <- c("D", "V", "p", "yes", "no")
+tb3.ej5 <- tb3.ej5[, -3]
+tb3.ej5$total <- tb3.ej5$yes + tb3.ej5$no
+@ 
+
+But before we fit the model we need to create a variable of the
+proportions of yes responses, which will be used in the model fit
+
+<<logistic ej 5>>=
+temp <- tb3.ej5$yes/tb3.ej5$total
+fit.logistic.ej5 <- glm(temp ~ D + V, family = binomial, weights = total,
+    data = tb3.ej5)
+@
+
+Note that the residual deviance is the same as the loglinear
+model. More over, as stated in \textcite[section 7.3.2]{Agresti-2007}, the
+calculated values for the odds ratios will be the same, for example
+for the logistic model, conditional on the victim's race, the odds
+that a white defendant to receive a death penalty is
+exp(-0.8678)=\Sexpr{round(exp(fit.logistic.ej5$coefficients[2]),2)}, the same as what was
+reported in a). So the logistic model is $Logit (P=1) = -3.5961
+-0.8678D + 2.4044V$ Where D=1 and V=1 for white defendants and
+victims, respectively.\\
+
+\problem
+First the construction of the data frame
+
+<<d_ej6,eval=true>>=
+tb.ej6 <- data.frame(expand.grid(J.P = c(1, 0), T.F = c(1, 0), S.N = c(1,
+    0), E.I = c(1, 0)), C = c(77, 42, 106, 79, 23, 18, 31, 80, 140, 52, 138,
+    106, 13, 35, 31, 79))
+@ 
+
+Then we fit the two models, the one for mutual independence and the
+one for homogeneous association
+
+<<model fit ej6, eval=true>>=
+fit.ind.ej6 <- glm(C ~ J.P + T.F + S.N + E.I, data = tb.ej6, family = poisson)
+fit.ej6 <- glm(C ~ .^2, data = tb.ej6, family = poisson)
+@ 
+
+a) Now, we can see how the two models fit the data. First for the
+mutual independence model.
+
+<<results A ej6>>=
+summary(fit.ind.ej6)
+@ 
+
+This model doesn't fit well, p-value = \Sexpr{1-pchisq(fit.ind.ej6$deviance,df=11)}.\\
+
+b) For the model of homogeneous association, we have:
+
+<<results B ej6>>=
+summary(fit.ej6)
+@ 
+
+Note that the estimate for the pair \textsf{J.P:S.N} is the greatest
+in magnitude; which reflects a stronger association.\\
+
+c) For the homogeneous model, note, in the above summary, that the
+Wald p-value for the interactions \textsf{J.P:E.I} and
+\textsf{T.F:E.I} are not significant. So it may be appropriate to
+remove those interactions from the model. We test this with the anova function.
+
+<<results C ej6>>=
+fit2.ej6 <- update(fit.ej6, . ~ . - T.F:E.I - J.P:E.I)
+anova(fit2.ej6, fit.ej6, test = "Chisq")
+@ 
+
+The p-value of 0.3317 indicates that it's safe to remove those terms
+from the model.\\
+
+\problem
+First, note that the results from table 7.22 use a different coding
+for the factors, \textsf{T.F} and \textsf{S.N}. This affects the sign
+of the parameter estimates, but does not change the results from the
+model comparison. Thus for questions a and b we can work with the data
+and results from the previous exercise. Nevertheless, following is the
+code for constructing a table and calculating the results as they
+appear in \textcite{Agresti-2007}.
+
+<<table ej7,eval=true>>=
+tb.ej7 <- tb.ej6
+## tb.ej7 <- within(tb.ej7, {
+##     rm(Fit1)
+## })
+tb.ej7$E.I <- factor(tb.ej7$E.I, levels = c(0, 1))
+tb.ej7$S.N <- factor(tb.ej7$S.N, levels = c(1, 0))  #Reverse coding 
+tb.ej7$T.F <- factor(tb.ej7$T.F, levels = c(1, 0))  #Reverse coding 
+tb.ej7$J.P <- factor(tb.ej7$J.P, levels = c(0, 1))
+@ 
+
+a) With the data with the correct coding we first fit the model with
+all the pairwise interactions, then the one without T.F:E.I and
+J.P:E.I.
+
+<<a7,eval=true>>=
+fit.full.ej7 <- glm(C ~ .^2, family = poisson, data = tb.ej7)
+fit2.ej7 <- update(fit.full.ej7, . ~ . - T.F:E.I - J.P:E.I)
+@ 
+
+Now we compare them with a chi-square test.
+
+<<a7.2>>=
+anova(fit2.ej7, fit.full.ej7, test = "Chisq")
+@ 
+
+Just like the previous exercise, the value of 0.3317 indicates that
+the model fit well. Remember that this value is used for the null
+hypothesis that all the parameters that are not in the simpler model
+equal zero.\\
+
+b) To calculate the 95\% confidence interval:
+
+<<b7>>=
+temp <- summary(fit2.ej7)$coef["J.P1:S.N0", 1]  #Estimate
+temp2 <- summary(fit2.ej7)$coef["J.P1:S.N0", 2]  #Standard error
+exp(temp + 1.96 * c(-1, 1) * temp2)
+@ 
+
+First, the estimate \textsf{S.N:J.P} (exp(-1.22021)=0.2951671) represents the conditional odds
+ratio for a person who was classified as ``intuitive'' of being
+``judging'', compared to a person who was classified as
+``sensing''. Now, the 95\% CI of, (0.22,0.39), indicate that we can be
+95\% sure that the true conditional odds ratio, for a person that was first
+classified as  ``intuitive'', of being classified as
+``judging'' is at least 22\% and at most 39\% the odds for a person
+that was first classified ``sensing''. Note that the interval is narrow.\\
+
+c) To change the coding of the \textsf{S.N} factor we use the
+\textsf{relevel} function, then we fit, again, the full and the
+reduced model\footnote{Note that if we want to re-use the previous
+  code we need to fit both models, since the reduced model was
+  calculated with the \textsf{update} function.}. At the end we would
+see that the \textsf{S.N} parameter and all those that interact with
+it change sign. This, of course, changes the value for the conditional
+odds ratio, and more importantly their interpretation. The estimate
+becomes exp(1.220214)= 3.387912 and for its confidence interval
+to, (2.55,4.50). This can be interpreted as, the conditional odds
+ratio for a person, classified in category 1 as ``sensing'', to be
+classified in a second category as ``judging'', is at least 2.5
+times, and at most 4.5 times, the odds for a person classified in
+category 1 es ``intuitive''. Note that the relation with the other
+odds ratio and confidence intervals is through the \emph{inverse} function.\\
+
+\problem
+a) The models for the mutual independence, conditional association and
+ all the three-way interactions are, respectively:
+\begin{eqnarray*}
+log\mu_{ijkl}&=&\lambda + \lambda_{i}^{J.P} + \lambda_j^{T.F} + \lambda_k^{S.N} + \lambda_l^{E.I}\\
+  log\mu_{ijkl}&=&\lambda + \lambda_{i}^{J.P} + \lambda_j^{T.F} + \lambda_k^{S.N} + \lambda_l^{E.I} + \lambda_{ij}^{J.P:T.F} + \lambda_{ik}^{J.P:S.N} +
+  \lambda_{il}^{J.P:E.I} + \lambda_{jK}^{T.F:S.N} + \lambda_{jl}^{T.F:E.I} + \lambda_{Kl}^{S.N:E.I}\\
+  log\mu_{ijkl}&=&\lambda + \lambda_{i}^{J.P} + \lambda_j^{T.F} + \lambda_k^{S.N} + \lambda_l^{E.I} + \lambda_{ij}^{J.P:T.F} + \lambda_{ik}^{J.P:S.N} +
+  \lambda_{il}^{J.P:E.I} + \lambda_{jK}^{T.F:S.N} + \lambda_{jl}^{T.F:E.I} + \lambda_{Kl}^{S.N:E.I}\\
+  &&+ \lambda_ {ijk}^{J.P:T.F:S.N} + \lambda_ {ijl}^{J.P:T.F:E.I} + \lambda_ {ikl}^{J.P:S.N:E.I} + \lambda_ {jkl}^{T.F:S.N:E.I}\\
+\end{eqnarray*}
+
+b) To compare the models based on the AIC (akaike information
+criteria) we need to fit all the models; now, since we have done that
+for second model, we need to fit the mutual independence model and the
+one with all the three-way interactions:
+
+<<b8,eval=true>>=
+fit.ind.ej7 <- glm(C ~ J.P + T.F + S.N + E.I, family = poisson, data = tb.ej7)
+fit.sat.ej7 <- glm(C ~ .^3, family = poisson, data = tb.ej7)
+@ 
+
+Then we can extract the AIC value with the command,
+\textsf{model\$aic}, and see that the values are, respectively:
+\Sexpr{round(fit.ind.ej7$aic,2)}, \Sexpr{round(fit.full.ej7$aic,2)} and
+\Sexpr{round(fit.sat.ej7$aic,2)}. Based on these values the
+homogeneous association model seems to be the best one.\\
+
+\problem
+First we fit the data with the following commands. Note that for the
+factor ``Department'' we need to specify that it's a factor. After
+that we can fit the homogeneous association model
+
+<<data.ej9,eval=true>>=
+tb.ej9 <- data.frame(expand.grid(D = 1:6, G = c(1, 0), A = c(1, 0)), C = c(512,
+    353, 120, 138, 53, 22, 89, 17, 202, 131, 94, 24, 313, 207, 205, 279, 138,
+    351, 19, 8, 391, 244, 299, 317))
+tb.ej9$D <- factor(tb.ej9$D, levels = 6:1)
+fit.ej9 <- glm(C ~ .^2, data = tb.ej9, family = poisson)
+@ 
+
+a) To fit the conditional and marginal odds ratio we need first to
+calculate the fitted values.
+
+<<a9>>=
+fit.val.ej9 <- fitted(fit.ej9)
+# Conditional odds ratio
+oddsratio(xtabs(fit.val.ej9 ~ A + G + D, data = tb.ej9), log = FALSE)
+# Marginal odds ratio
+oddsratio(xtabs(fit.val.ej9 ~ A + G, , data = tb.ej9), log = FALSE)
+@ 
+
+According to \textcite[p.367]{Agresti-2007} the reason for such
+differences is that men apply in greater number to departments 1 and
+2 with relatively high admissions rate, while women apply in greater
+number to departments 3 to 6 with low admission rate.\\
+
+b) This model has a Deviance ($G^2$) value of \Sexpr{round(fit.ej9$deviance,2)} on
+\Sexpr{fit.ej9$df.residual} degrees of freedom. Through a chi-square
+approximation this has a p-value of \Sexpr{round(pchisq(20,204,df=5,2))}, the
+fit is poor. However, by looking to the residuals, it is clear that
+the lack of fit it is only in department 1:
+
+<<b9,eval=true>>=
+tb.ej9$Res <- resid(fit.ej9, type = "pearson")/sqrt(1 - lm.influence(fit.ej9)$hat)
+@ 
+<<b9.1,echo=false>>=
+tb.ej9
+@ 
+
+c) To delete department 1 we can use the \textsf{subset}
+function.%Note that we need to specify, again, that \textsf{D} is a factor
+
+<<c9,eval=true>>=
+tb2.ej9 <- subset(tb.ej9, D != 1)
+fit2.ej9 <- glm(C ~ .^2, family = poisson, data = tb2.ej9)
+@
+
+This model has a  Deviance ($G^2$) value of \Sexpr{round(fit2.ej9$deviance,2)} on
+\Sexpr{fit2.ej9$df.residual} degrees of freedom. Through a chi-square
+approximation this has a p-value of
+\Sexpr{round(pchisq(fit2.ej9$deviance,df=fit2.ej9$df.residual),2)}, the fit
+seems well.\\
+
+d) To fit an equivalent logistic model we need to transform the data
+so we can have a column of proportions of ``yes'' responses, or
+equivalent two columns, one of ``yes'' responses and other of ``no''
+responses or ``totals''.
+
+<<d9,eval=true>>=
+tb3.ej9 <- data.frame(expand.grid(D = 2:6, G = c(1, 0)), Y = tb2.ej9$C[tb2.ej9$A ==
+    1], T = tb2.ej9$C[tb2.ej9$A == 1] + tb2.ej9$C[tb2.ej9$A == 0])
+tb3.ej9$D <- factor(tb3.ej9$D, levels = 6:2)
+fit3.ej9 <- glm(I(Y/T) ~ D + G, weights = T, data = tb3.ej9, family = binomial)
+@ 
+
+This yields the equation $logit A(P=1) = -2.692 +1.592D5 +2.011D4
++2.065D3 +3.205D2 +0.0307G$. So, conditioning on department, the odds,
+for a male, of being admitted is exp(0.0307) = 1.03 those for
+females. This isn't a significant difference so we can conclude that
+admission is independent of gender\footnote{Seeing also the summary
+  output one can notice that the Wald p-value isn't significant for
+  the gender factor}.
+
+\problem
+First we construct the tables needed for the first two questions.
+
+<<data10,eval=true>>=
+tb.ej10 <- data.frame(expand.grid(E = c(1, 0), S = c(1, 0), I = c(0, 1)),
+    C = c(1105, 411111, 4624, 157342, 14, 483, 497, 1008))
+tb2.ej10 <- data.frame(expand.grid(E = c(1, 0), S = c(1, 0)), N = c(1105,
+    411111, 4624, 157342), Y = c(14, 483, 497, 1008))
+tb2.ej10 <- within(tb2.ej10, {
+    T <- Y + N
+    rm(N)
+})
+@
+
+a) For the first question we first fit a model with all the pairwise
+interactions, \ie a homogeneous association model. From that model we
+can use the \textsf{stepAIC} function to perform a stepwise removal of
+terms based on the value of AIC.\\
+
+<<a10>>=
+fit.ej10 <- glm(C ~ .^2, family = poisson, data = tb.ej10)
+stepAIC(fit.ej10, scope = list(lower = C ~ 1), direction = "backward",
+        trace = TRUE)
+@ 
+
+Note that removing any of the higher order terms significantly
+increases the deviance value, thus the best model is the homogeneous
+association model. As explained in \textcite[p. 209]{Agresti-2007} this
+type of model implies that the odds ratio between any two variables
+are the same at each level of the third variable.\\
+
+b) The equivalent logistic model is fitted with:
+
+<<b10,eval=true>>=
+fit2.ej10 <- glm(I(Y/T) ~ E + S, weights = T, data = tb2.ej10, family = binomial)
+@ 
+
+This yields the equation, $logit I=-5.043 + 2.798E - 1.717S$. Based on
+this model we can say that the odds of having fatal injuries increases
+when the victim is ejected (E) from the vehicle (conditional odds
+ratio, 16.4 times compared to a non-ejected victim) and decreases when the
+victim wares seat belt (conditional odds ratio, 18\% those who
+don't use seat belt).\\
+
+c) The dissimilarity index is calculated as follows:
+
+<<c10>>=
+sum(abs(tb.ej10$C - fitted(fit.ej10)))/(2 * sum(tb.ej10$C))
+@ 
+
+Remember from page 219 that this value represents the proportion of
+sample cases that must be removed to yield a perfect
+fit. \textcite{Agresti-2007} uses this value to compare simpler models,
+but in this case I don't think it's informative, since, even removing
+all the pair-wise interactions yield a dissimilarity index of:
+
+<<c10-1>>=
+#Mutual independence model
+fit.red3.ej10 <- update(fit.ej10, . ~ . - E:I - S:I - S:E)
+sum(abs(tb.ej10$C - fitted(fit.red3.ej10)))/(2 * sum(tb.ej10$C))
+@ 
+
+According to this value we need to move only 1\% of the cases to have
+a perfect fit under a model of mutual independence. However, at least
+on theory, there is a clear relationship among the use of seat-belt
+and the magnitude of the injury. Moreover consider the implications of
+saying that there isn't a relationship between those two factors!.\\
+
+\problem
+The reasoning that \textcite[p.367]{Agresti-2007} uses is the following:
+Since there isn't a three way interaction he analyzes all the pairwise
+interactions that include the ``injury'' (I) factor; these are, GI
+=0.58, IL=2.13 and IS=0.44, and they can be interpreted as: For the
+first case, the conditional odds ratio for a male to get injured is
+58\% those for a female; for the second case, the conditional odds
+ratio of injuries in rural locations is 2 times for urban locations;
+and for the third case, the conditional odds ratio of getting injured
+if wearing seat belt is 44\% the odds ratio for those who don't wear
+seat belt. Thus combining the information we agree with the
+information in that ``the most likely case for injury is accidents for
+females not wearing seat belts in rural locations.\\
+
+\problem
+First of all, I assume that by ``sensible'' \textcite{Agresti-2007} means
+that a particular model is easy to interpret.\\
+
+Now, regarding the model fitting, first we need to construct the
+data. To this end, I constructed a data frame that could be used to
+fit a loglinear model (\ie with a column of counts) and from that the
+tables needed for the two logistic models were constructed. Note that
+the compound function, \textsf{as.data.frame(xtabs())}, works pretty
+well for collapsing the data over a particular factor.
+
+<<data ej12, eval=true>>=
+tb.ej12 <- data.frame(expand.grid(S = c(0, 1), L = c(0, 1), G = c(0, 1), I = c(0,
+    1)), C = c(7287, 11587, 3246, 6134, 10381, 10969, 6123, 6693, 996, 759,
+    973, 757, 812, 380, 1084, 513))
+tb2.ej12 <- data.frame(expand.grid(S = c(0, 1), L = c(0, 1), G = c(0, 1)),
+    N = c(7287, 11587, 3246, 6134, 10381, 10969, 6123, 6693), Y = c(996, 759,
+        973, 757, 812, 380, 1084, 513))
+tb2.ej12 <- within(tb2.ej12, {
+    T <- N + Y
+    rm(N)
+})
+tb3.ej12 <- as.data.frame(xtabs(C ~ S + L + G, data = tb.ej12))
+tb3.ej12 <- data.frame(expand.grid(S = c(0, 1), L = c(0, 1), G = c(0, 1)),
+    N = tb3.ej12[1:4, 4], Y = tb3.ej12[5:8, 4])
+tb3.ej12 <- within(tb3.ej12, {
+    T <- N + Y
+    rm(N)
+})
+@
+
+On a second thought, ``sensible'' could mean appropriate. In this case
+only the second model is appropriate. The first one isn't because it
+involves collapsing the data over the injury factor, which isn't
+correct, since it isn't independent of, either, the location or the
+gender factor.\\
+
+For that reason we only fit the second model:
+
+<<ej12,eval=true>>=
+fit.ej12 <- glm(I(Y/T) ~ L + G, weights = T, family = binomial, data = tb3.ej12)
+fit2.ej12 <- glm(I(Y/T) ~ L + G + S, weights = T, family = binomial,
+                 data = tb2.ej12)
+@ 
+
+The equation for this model is: $logit
+I=-1.974+0.758L-0.545G-0.817S$. According to this model, the
+conditional odds ratio of getting injured increases in rural
+locations, decreases for males and for those who wear seat belts.\\
+
+\problem
+First we construct the data. Note that because all the factors have
+more than two levels, we need to specify their correct ordering with
+the function \textsf{factor}.
+
+<<data13,eval=true>>=
+tb.ej13 <- data.frame(expand.grid(H = c(1, 2, 3), E = c(1, 2, 3), C = c(1,
+    2, 3), L = c(1, 2, 3)), N = c(62, 11, 2, 11, 1, 1, 3, 1, 1, 90, 22, 2,
+    21, 6, 2, 2, 2, 0, 74, 19, 1, 20, 6, 4, 9, 4, 1, 17, 7, 3, 3, 4, 0, 0,
+    0, 0, 42, 18, 0, 13, 9, 1, 1, 1, 0, 31, 14, 3, 8, 5, 3, 2, 2, 2, 5, 0,
+    1, 0, 0, 1, 0, 0, 0, 3, 1, 1, 2, 0, 1, 0, 0, 0, 11, 3, 1, 3, 2, 1, 1,
+    0, 3))
+tb.ej13$L <- factor(tb.ej13$L, levels = 3:1)
+tb.ej13$C <- factor(tb.ej13$C, levels = 3:1)
+tb.ej13$E <- factor(tb.ej13$E, levels = 3:1)
+tb.ej13$H <- factor(tb.ej13$H, levels = 3:1)
+@ 
+
+Now we can fit the homogeneous association model:
+
+<<a13,eval=true>>=
+fit.ej13 <- glm(N ~ .^2, data = tb.ej13, family = poisson)
+@ 
+
+a) This model has a Deviance value of
+\Sexpr{round(fit.ej13$deviance,2)} on
+\Sexpr{round(fit.ej13$df.residual,2)} that has a p-value of
+\Sexpr{round(1-pchisq(31.669,df=48),2)}; the model seems to fit well.\\
+
+b)To calculate the conditional odds ratio we need to take into account
+that the factors of interest (E and H) have, each, more than two
+levels. For this reason we can not apply directly the
+\textsf{oddsratio} function over the \textsf{xtabs} one. We need to
+store the result of the latter function and then apply the former
+function with the proper indexing \parencite[see][p. 21]{Dalgaard-2008}
+
+<<b13>>=
+temp <- xtabs(fitted(fit.ej13) ~ E + H + C + L, data = tb.ej13)
+oddsratio(temp[-2, -2, , ], log = FALSE)
+@ 
+
+Note that in the indexing we removed the level two of both factors of
+interest (which are in the same order as they were in the
+\textsf{xtabs} function). Worth remember is that the
+\textsf{oddsratio} function works on 2x2 tables, thus if, for instance,
+factor E had had 4 levels, and we are interested in the extreme ones,
+then the indexing would have been: \texttt{oddsratio(temp[c(-2,-3),-2,
+  ,])}.\\
+
+The relationship of $\lambda_{11}^{EH} + \lambda_{33}^{EH} -
+\lambda_{13}^{EH} - \lambda_{31}^{EH}$ can be explained by extending
+and relating what is mentioned in \textcite[pages 205 and
+207]{Agresti-2007}, namely, that the log odds ratio is related to the
+$\lambda_{ij}^{XY}$ parameters of interest; all the other parameters,
+for example $\lambda_{ij}^{AB}$ cancel out. Also note that because we
+have set the third level to zero, all the parameters involving the
+third level equal zero, so the initial relationship simplifies to
+$\lambda_{11}^{EH}$.\\
+
+Finally to construct the 95\% confidence interval we store the
+estimate and its standard error in temporary variables, to ease the
+calculation.
+
+<<b13-2>>=
+temp <- summary(fit.ej13)$coef["H1:E1", 1]
+temp2 <- summary(fit.ej13)$coef["H1:E1", 2]
+round(exp(temp + 1.96 * c(-1, 1) * temp2), 2)
+@ 
+
+c) As mentioned in the previous question, because the third category
+was set to zero, all the ``too much'', ``too little'' relationships
+simplify to $\lambda_{11}^{XY}$, where XY represent the pair of
+interest. All the pairs are summarized in the following table.\\
+\begin{center}
+  \begin{tabular}[h]{cccccc}
+   \hline
+   \rule[-3mm]{0pt}{8mm}
+   Pair  & Log odds & Odds ratio & Std. Error &   z value &Pr(>|z|)\\\hline    
+   H1:E1 & 2.1425 &  \Sexpr{round(exp( 2.1425),2)} & 0.5566 %
+   & 3.849 & 0.000119\\[2mm]
+   H1:C1 &-0.1865 &  \Sexpr{round(exp(-0.1865),2)} & 0.4547 %
+   &-0.410 & 0.681730\\[2mm]
+   H1:L1 & 1.8741 &  \Sexpr{round(exp( 1.8741),2)} & 0.5079 %
+   & 3.690 & 0.000225\\[2mm]
+   E1:C1 & 1.2000 &  \Sexpr{round(exp( 1.2000),2)} & 0.5177 %
+   & 2.318 & 0.020448\\[2mm]
+   E1:L1 &-0.1328 &  \Sexpr{round(exp(-0.1328),2)} & 0.6378 %
+   &-0.208 & 0.835001\\[2mm]
+   C1:L1 & 0.8735 &  \Sexpr{round(exp( 0.8735),2)} & 0.4604 %
+   & 1.897 & 0.057811\\\hline
+  \end{tabular}
+\end{center}
+
+Based on the Wald p-value it seems reasonable to drop pairs
+\textsf{H:C} and \textsf{E:L}. In fact these two pairs are dropped
+with the function \textsf{stepAIC}. Code shown below.\\
+
+<<c13,eval=true>>=
+stepAIC(fit.ej13, scope = list(lower = N ~ 1), direction = "backward")
+@ 
+
+\problem
+First we construct the data frames. Note that the second table is
+constructed based on the first one. Also note that the P factor was
+explicitly stated as such.
+
+<<data ej14, eval=true>>=
+tb.ej14 <- data.frame(expand.grid(P = c(1, 2, 3), S = c(0, 1), R = c(0, 1),
+    B = c(0, 1)), C = c(99, 73, 51, 8, 20, 6, 73, 87, 51, 24, 50, 33, 15,
+    20, 19, 4, 13, 12, 25, 37, 36, 22, 60, 88))
+tb2.ej14 <- data.frame(expand.grid(P = c(1, 2, 3), R = c(0, 1), B = c(0, 1)),
+    Y = subset(tb.ej14, S == 1)$C, T = subset(tb.ej14, S == 1)$C + subset(tb.ej14,
+        S == 0)$C)
+tb.ej14$P <- factor(tb.ej14$P, levels = 3:1)
+tb2.ej14$P <- factor(tb2.ej14$P, levels = 3:1)
+@ 
+
+With the data in hand, the model selection was done. First a model
+with all triple interactions was fitted, and from that, a backward
+selection was performed with the function \textsf{stepAIC} from the
+\textsf{MASS} library.
+
+<<a14,eval=true>>=
+fit.full.ej14 <- glm(C ~ .^3, family = poisson, data = tb.ej14)
+fit.aic.ej14 <- stepAIC(fit.full.ej14, scope = list(lower = C ~ 1), trace = FALSE,
+    direction = "backward")
+@ 
+
+The model selected is the one with the triple interaction
+\textsf{P:S:R} and all the lower terms. However, by looking at the
+last step of the elimination process (table below) we can see that
+eliminating all the three-way interactions increases the deviance
+value only slightly\\
+
+\begin{center}
+  \begin{tabular}[h]{cccc}
+    \hline
+    \rule[-3mm]{0pt}{8mm}      &Df& Deviance&   AIC \\\hline 
+    <none> &  &    2.508& 160.95\\ 
+    P:S:R& 2&    6.963& 161.40\\ 
+    R:B  & 1&   16.203& 172.64\\ 
+    P:B  & 2&   28.427& 182.87\\ 
+    S:B  & 1&   59.541& 215.98\\\hline
+  \end{tabular}
+\end{center}
+
+b) The triple interaction \textsf{P:S:R} implies that the odds ratios
+among any two of those factors would vary across the levels of the third.\\
+Now, regarding the calculation of the odds ratios, first, note that those
+involving the \textsf{P} factor can not be computed directly because
+it has three levels; instead
+we need to store the results of \textsf{xtabs} in temporary variables
+(The first three lines in the code below).
+With those variables we can calculate the odds radio for any pair we
+want, just remember that since we have set the third level of the
+\textsf{P} factor to zero, the odds ratio involving that level will be
+also zero. Also important is that the number used in the index doesn't
+represent the level of the factor but the line of the table formed
+with this factor. If we wouldn't have reversed the order (with the
+command (\verb|tb.ej14$P <- factor(tb.ej14$P,levels=3:1|) both things would
+mean the same, however since we did reverse the order, when we use,
+for example the number \texttt{-3} it means that we are dropping the
+first level of the factor.\\
+
+<<b14>>=
+temp <- xtabs(fitted(fit.aic.ej14) ~ P + S + R + B, data = tb.ej14)
+temp1 <- xtabs(fitted(fit.aic.ej14) ~ P + R + S + B, data = tb.ej14)
+temp2 <- xtabs(fitted(fit.aic.ej14) ~ P + B + S + R, data = tb.ej14)
+oddsratio(temp[-3, , , ], log = FALSE)  #Odds ratio 2-3
+oddsratio(temp[-2, , , ], log = FALSE)  #Odds ratio 1-3
+@ 
+
+\begin{center}
+  \begin{tabular}[h]{lrlr}
+    \hline
+    \rule[-3mm]{0pt}{8mm}Pair&Odds Ratio&Pair&Odds Ratio\\\hline
+    P2:S (R=0) & 1.6179113 & P2:R (S=0)&1.1581004\\	
+    P2:S (R=1) & 0.7574738 & P2:R (S=1)&0.5421995\\	
+    P1:S (R=0) & 0.5135238 & P1:R (S=0)&0.7698739\\	
+    P1:S (R=1) & 0.4352461 & P1:R (S=1)&0.6525201\\		
+    S:R (P=2)  & 2.1469    & P2:B      &0.537588\\ 	
+    S:R (P=1)  & 3.886629  & P1:B      &0.3940744\\ 	
+    S:B        & 3.147363  & R:B       &1.814253\\\hline
+  \end{tabular}
+\end{center}
+
+According to these values, the strongest relationships are among the S
+and R or B factors. For the \textsf{S:R} case it means that the
+conditional odds for a
+person, who doesn't attend regularly to religious service, to be in
+favor of
+premarital sex is more than three times of those for someone who
+goes regularly to religious service; this, provided that the person's
+political tendency is liberal, if it is moderate the odds ratio
+comparing the previous two groups is 2 times of those who go regularly
+to religious service. For the \textsf{S:B} case, the conditional odds ratio, for
+people who go regularly to church, to be in favor of make available to teenagers
+bird control, is three times of those who  go
+regularly to church.\\
+
+To know exactly the meaning of the odds ratio, it's strongly advisable
+to check how the \textsf{xtabs} function classifies the values.\\
+
+c) Because of the way the table was set up, the logistic model
+calculates the log odds ratio of being against premarital sex, in
+function of the other three predictors
+
+<<c14,eval=true>>=
+fit2.ej14 <- glm(I(Y/T) ~ P + R + B, weights = T, data = tb2.ej14,
+                 family = binomial)
+@ 
+
+As it is seen in the following table, almost all the parameters have
+significant Wald p-values, except for P2.\\
+
+\begin{center}
+\begin{tabular}{rrrrrr}
+  \hline
+  & Log odds ratio & Std. Error & z value & Pr($>$$|$z$|$) \\ 
+  \hline
+  (Intercept) & -1.57 & \Sexpr{round(exp(-1.57),2)}&
+  0.19  &  7.96e-16\\ 
+  P2          & -0.08 & \Sexpr{round(exp(-0.08),2)}& 
+  0.17 & -0.45 &     0.655\\ 
+  P1          & -0.81 & \Sexpr{round(exp(-0.81),2)}& 
+  0.20 & -3.96 &  7.59e-05\\ 
+  R           & 1.15  & \Sexpr{round(exp(1.15),2)}& 
+  0.17 & 6.76    &  1.37e-11\\ 
+  B           & 1.15  & \Sexpr{round(exp(1.15),2)}& 
+  0.15 & 7.50    &  6.29e-14\\ 
+   \hline
+\end{tabular}
+\end{center}
+
+More over the model's
+deviance is 5.877 on 4 degrees of freedom (p-value =
+\Sexpr{round(1-pchisq(5.877,df=4),2)}). The fit seems decent.\\
+
+Because the model doesn't include an interaction term for P and R the
+odds ratios will be different. However the direction of the
+relationship is similar, for instance, the conditional odds ratio of
+being against premarital sex increase for those who attend regularly to
+religious service as well for those who are against the availability
+for birth control to teenagers. Note that both values are equal and
+that for the B factor in the logistic regression model is also equal
+to the BS parameter for the loglinear model.\\
+
+d) Since there are all the pairwise interactions, beside the three-way
+one between \textsf{P:R:S} none of the partial tables would be equal
+to the marginal ones.\\
+
+\problem
+First we set up the data frame. Next we fit a saturated model (\ie one
+that has a four-way interaction) and with it we calculate the ``best''
+model based on the AIC: 
+
+<<data ej15,eval=true>>=
+tb.ej15 <- data.frame(expand.grid(C = c(1, 0), A = c(1, 0), R = c("W", "O"),
+    G = c("F", "M"), M = c(1, 0)), Count = c(405, 13, 1, 1, 23, 2, 0, 0, 453,
+    28, 1, 1, 30, 1, 1, 0, 268, 218, 17, 117, 23, 19, 1, 12, 228, 201, 17,
+    133, 19, 18, 8, 17))
+tb2.ej15 <- data.frame(expand.grid(C = c(1, 0), A = c(1, 0), R = c("W", "O"),
+    G = c("F", "M")), Y = c(405, 13, 1, 1, 23, 2, 0, 0, 453, 28, 1, 1, 30,
+    1, 1, 0), N = c(268, 218, 17, 117, 23, 19, 1, 12, 228, 201, 17, 133, 19,
+    18, 8, 17))
+tb2.ej15 <- within(tb2.ej15, {
+    T = Y + N
+    rm(N)
+})
+fit.sat.ej15 <- glm(I(Y/T) ~ .^4, weights = T, data = tb2.ej15, family = binomial)
+fit.aic.ej15 <- stepAIC(fit.sat.ej15, scope = list(lower = I(Y/T) ~ 1),
+                        direction = "backward")
+@ 
+
+a) This approach yields a main effects model, namely one that does not
+have an interaction term:\\
+
+\begin{equation}
+  logit M = -5.4640 + 2.8592C +2.9873A - 0.2989R^O + 0.3297G^M
+\end{equation}
+
+About this model two things should be noted, first that during the
+backward selection process a warning
+message appeared, (\texttt{glm.fit: fitted probabilities numerically 0
+or 1 occurred}); second, that based on the Wald p-values for the
+parameters in the final model, it seems sensible to drop the race
+effect. In fact, fitting a model without the race term  and
+comparing this with the model above (with a chi-squared test) yields a
+value for the null hypothesis, that all the parameters not included in
+the reduced model are zero, equal to 0.1384. Thus the final equation is:
+
+\begin{equation}
+  logit M = -5.5162 +2.8591C +3.0202A +0.3279G^M
+\end{equation}
+
+The code for to obtain this result was:
+
+<<a15,eval=true>>=
+fit.aic2.ej15 <- update(fit.aic.ej15, . ~ . - R)
+anova(fit.aic2.ej15, fit.aic.ej15, test = "Chisq")
+@ 
+
+b) This model is equivalent to the following loglinear model:
+
+\begin{eqnarray*}
+  log \mu_{ijkl} &=&\lambda +\lambda_i^C +\lambda_j^A +\lambda_k^G +\lambda_l^M\\
+  &&+\lambda_{il}^{CM} +\lambda_{jl}^{AM} +\lambda_{kl}^{GM} +\lambda_{ij}^{CA} +\lambda_{ik}^{CG} +\lambda_{jk}^{AG}
+\end{eqnarray*}
+
+However it should be noted that ending in this model by fitting
+``all'' possible loglinear models isn't easy; first because there are
+many interactions among the \textsf{R} factor and the others, thus
+when we see the Wald p-values some seem significant while others
+don't. This complicates any further analysis after the one performed
+by the \textsf{stepAIC} function (see the summary for model
+\texttt{fit2.aic.ej15}). Even if we don't take into account the race
+factor, the \textsf{stepAIC} returns an even more simpler model, one
+that drops the interaction \textsf{C:G}.\\
+At the end, I think, this underlines how, when applicable, logistic
+models are simpler to fit and to interpret \parencite[see][section 7.3.2]{Agresti-2007}.\\
+
+\problem
+a) The equivalence is explained in \textcite[section 7.3.1]{Agresti-2007}
+and for this particular exercise it's explained with pencil in the
+notes. There it's said that the equivalence is reflected in the
+parameters of both models, which should be equal. Thus we can compare
+those parameters an if they are equal the models are equivalent. For
+the loglinear model, it was already fitted in the notes (see
+\texttt{fit3.accident}), while for the logistic model we fit it with:
+
+<<data ej16,eval=true>>=
+tb.ej16 <- data.frame(expand.grid(Gender = c(0, 1), Location = c(0, 1), Seat = c(0,
+    1), Injury = c(0, 1)), Count = c(7287, 11587, 3246, 6134, 10381, 10969,
+    6123, 6693, 996, 759, 973, 757, 812, 380, 1084, 513))
+tb2.ej16 <- cbind(subset(tb.ej16, Injury == 1), T = subset(tb.ej16, Injury ==
+    1)$Count + subset(tb.ej16, Injury == 0)$Count)
+tb2.ej16 <- within(tb2.ej16, {
+    rm(Injury)
+    Y <- Count
+    rm(Count)
+})
+fit.ej16 <- glm(I(Y/T) ~ Seat + Location + Gender, weights = Y, family = binomial,
+    data = tb2.ej16)
+@
+
+The coefficients of interest are showed in the following table.\\
+
+\begin{center}
+  \begin{tabular}[h]{lrrrr}
+    \hline
+    \rule[-3mm]{0mm}{8mm}Parameter&Odds ratio&Estimate&Est. error&P value\\\hline
+    \multicolumn{5}{l}{\textbf{Logistic model}}\\
+    Seat          	    &\Sexpr{round(-0.83176,2)} &  -0.83176 &    0.09137 &  < 2e-16\\[2mm]
+    Locationrural  	    &\Sexpr{round( 0.76560,2)} &   0.76560 &    0.08410 &  < 2e-16\\[2mm]
+    Gendermale    	    &\Sexpr{round(-0.53327,2)} &  -0.53327 &    0.08272 & 1.15e-10\\[2mm]
+    \multicolumn{5}{l}{\textbf{Loglinear model}}\\	  
+    Seat:Injury         &\Sexpr{round(-0.81710,2)} &  -0.81710 &    0.02765 &  < 2e-16\\[2mm]
+    Locationrural:Injury&\Sexpr{round( 0.75806,2)} &   0.75806 &    0.02697 &  < 2e-16\\[2mm]
+    Gendermale:Injury   &\Sexpr{round(-0.54483,2)} &  -0.54483 &    0.02727 &  < 2e-16\\\hline
+  \end{tabular}
+\end{center}
+
+Note that even though they are not exactly the same they are very similar.\\
+
+b) As explained in the note, because we have set the last level to
+zero, for each of the factor, the odds ratios are basically the
+parameter values themselves. Now for the odds ratio for the seat
+effect as it is shown in the table above they are also very similar:
+-0.83 and -0.82 for the logistic model and the loglinear model, respectively\\
+
+\problem
+\textcite{Agresti-2007} mentions that loglinear models are appropriate
+when working with multiple response variables and it is of interest to
+establish a relationship among them. If there is only one explanatory
+variable, logistic models are easier to fit and interpret.\\
+
+\problem
+\emph{See notes}
+
+\problem
+\emph{See notes}
+
+\problem
+\emph{See notes}
+
+\problem
+The model fitted in exercise 13 corresponds to the homogeneous
+association model, \ie one with all the pairwise associations. Thus we
+need to fit only the model with all the three way interactions, and
+then compare both with a chi-square test.
+
+<<a21,eval=true>>=
+fit2.ej13 <- glm(N ~ .^3, data = tb.ej13, family = poisson)
+anova(fit.ej13, fit2.ej13, test = "Chisq")
+@ 
+
+The differences of deviances equals 23.146 on 32 degrees of
+freedom, which has a p-value of 0.8737. The simpler model fits well.\\
+
+For the second part, the function \textsf{stepAIC} can be used
+
+<<a21-2,eval=true>>=
+fit.aic.ej13 <- stepAIC(fit.ej13, scope = list(lower = N ~ 1),
+                        direction = "backward")
+@ 
+
+This results in the model \Sexpr{formula(fit.aic.ej13)}, the same as
+Agresti. As it's shown in the independence graph (see notes), this
+model implies that E and L are conditionally independent on the
+values of CH, and similarly C and H are conditionally independent on EL.\\
+
+b) \emph{See notes}\\
+
+\problem
+\emph{See notes}
+
+\problem
+\emph{See notes}
+
+\problem
+First we construct the data. The second command adds the score
+variables which will be used later, while the fourth and fifth command
+specifies that \textsf{R} and \textsf{B} are factors, as well as their ordering.\\
+
+<<data ej24,eval=true>>=
+tb.ej24 <- data.frame(expand.grid(R = 1:9, B = 1:4), C = c(49, 31, 46, 34,
+    21, 26, 8, 32, 4, 49, 27, 55, 37, 22, 36, 16, 65, 17, 19, 11, 25, 19,
+    14, 16, 15, 57, 16, 9, 11, 8, 7, 16, 16, 11, 61, 20))
+tb.ej24 <- cbind(tb.ej24, u1 = 1:9, v1 = rep(1:4, each = 9))
+tb.ej24$R <- factor(tb.ej24$R, levels = 9:1)
+tb.ej24$B <- factor(tb.ej24$B, levels = 4:1)
+@ 
+
+a) Next we fit the model of independence, and create another table with
+the observed counts together the fitted values and its residuals. As
+described in \textcite[p. 229]{Agresti-2007} greater deviations
+occur at the corner of the table, however they are not the
+greatest. These occur one row before the lower corners.
+
+<<a24>>=
+fit0.ej24 <- glm(C ~ R + B, family = poisson, data = tb.ej24)
+tb2.ej24 <- tb.ej24[, 1:3]
+tb2.ej24$Fit0 <- round(fitted(fit0.ej24), 2)
+tb2.ej24$Res0 <- round(resid(fit0.ej24, type = "pearson")/
+                       sqrt(1 - lm.influence(fit0.ej24)$hat), 2)
+tb2.ej24
+@ 
+
+b) The next step is to fit the \emph{linear by linear}.
+
+<<b24,eval=true>>=
+fit1.ej24 <- glm(C ~ R + B + u1:v1, family = poisson, data = tb.ej24)
+@ 
+
+This model has a $\beta$ parameter of
+\Sexpr{round(summary(fit1.ej24)$coef["u1:v1",1],4)} with a standard
+error of \Sexpr{round(summary(fit1.ej24)$coef["u1:v1",2],4)}. This
+  means that there is a positive linear association between religious
+  attendance and opposition for birth control. People who go
+  frequently to church are more likely to be against birth control
+  availability to teenagers.\\
+
+c) The model fitted in b) has a deviance value of 19.901 on 23 degrees
+of freedom (p-value of \Sexpr{round(1-pchisq(19.901,df=23),2)}), the
+model fits well. We can also compare both models with a chi-square
+test to see if the $\beta$ parameter is significant (\ie different
+from zero).
+
+<<c24>>=
+anova(fit0.ej24, fit1.ej24, test = "Chisq")
+@ 
+
+The extremely low p-value indicates that the linear association is significant.\\
+
+d) To fit the linear by linear model with a different column code we
+do the following:
+
+<<d24, eval=true>>=
+tb.ej24$v2 <- rep(c(1, 2, 4, 5), each = 9)
+fit2.ej24 <- glm(C ~ R + B + u1:v2, family = poisson, data = tb.ej24)
+@ 
+
+The new coding changes the strength of the linear association from
+\Sexpr{round(summary(fit1.ej24)$coef["u1:v1",1],4)} to
+\Sexpr{round(summary(fit2.ej24)$coef["u1:v2",1],4)}.\\
+
+e) As \textcite{Agresti-2007} notes, the value of $\beta$ not only shows
+the direction and strength of the linear association, but also help us
+to calculate the odds ratio for any 2x2 sub-table. When we use an
+equally spaced coding and we want to calculate the odds ratio for
+contiguous rows and columns, the odds ratio simplifies to
+exp($\beta$). For the model in d), however, the columns aren't equally
+spaced so the odds ratio becomes $exp(\beta(3-2)(4-2)) = exp(\beta x2)$.\\
+
+\problem
+a) Controlling for a categorical variable the linear by linear model
+generalizes to:
+\begin{equation}
+  \label{eq:1}
+  log\mu_{ijk} = \lambda +\lambda_i^X +\lambda_j^Y +\lambda_k^Z
+  +\beta u_iv_j +\lambda_{ik}^{XZ} +\lambda_{jk}^{YZ}
+\end{equation}
+
+If X and Y are conditionally independent then the value of $\beta$
+becomes zero and the above equation simplifies to the model (XZ,YZ).\\
+
+b) Comparing with a chi-squared test models with and without the
+linear association we would get a test of conditional independence
+based on 1 degree of freedom.\\
+
+c) As explained for the previous exercise, if we calculate local odds
+ratio, the equation:\\ $exp(\beta(u_{c+1}-u_c)(v_{d+1}-v_d))$ becomes
+$exp(\beta(1)(1)) = \exp(\beta)$.\\
+
+d) A parameter of $\beta_k$ would imply a triple interaction between
+XYZ. In other words, the linear association will vary across the
+levels of Z.\\
+
+\problem
+\emph{See notes}
+
+\problem
+\emph{See notes or the book}
+
+\printbibliography
+\end{document}

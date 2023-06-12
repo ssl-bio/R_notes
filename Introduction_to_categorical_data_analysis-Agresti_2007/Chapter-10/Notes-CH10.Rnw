@@ -1,0 +1,841 @@
+% arara: pdflatex: { shell: true }
+% arara: biber
+% arara: pdflatex: { shell: true }
+% arara: pdflatex: { shell: true, synctex: yes }
+
+\documentclass[11pt,twoside]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{graphicx,calc}
+\usepackage[x11names]{xcolor}
+\usepackage[paper=letterpaper,divide={2.5cm,*,2cm}]{geometry}
+\usepackage[backend=biber,style=authoryear,maxcitenames=2,%
+maxbibnames=100,uniquename=false,uniquelist=false]{biblatex}
+\usepackage{graphicx,paralist,multirow,multicol,microtype,fancyvrb}%rotating,supertabular
+\usepackage{hyperref}
+\usepackage{Sweave}
+\usepackage{minted}
+
+\hypersetup{colorlinks=true,citecolor=black, linkcolor=black,urlcolor=SteelBlue4}
+ 
+\addbibresource{../../R_notes.bib}
+\DefineBibliographyStrings{english}{andothers={\mkbibemph{et al.}},}
+\AtEveryBibitem{\clearfield{month}}
+\AtEveryCitekey{\clearfield{month}}
+\renewbibmacro{in:}{%
+  \ifentrytype{article}{}{\printtext{\bibstring{in}\intitlepunct}}}
+\AtEveryBibitem{\clearlist{language}}
+\AtEveryBibitem{\clearfield{note}}
+\AtEveryBibitem{\clearfield{url}}
+\AtEveryBibitem{\clearfield{issn}}
+\DeclareFieldFormat{urldate}{}
+\DeclareFieldFormat[article]{pages}{#1}
+
+\renewenvironment{Sinput}{\minted[frame=single]{r}}{\endminted}
+\DefineVerbatimEnvironment{Soutput}{Verbatim}{frame=leftline}
+
+\title{Notes from: Random Effects: Generalized Linear Mixed Models}
+\author{Saúl Sotomayor Leytón}
+\date{April 2012}
+\makeatletter
+\renewcommand{\maketitle}{%
+ \thispagestyle{empty}
+ \noindent{\Large\textbf{\@title}}\\
+ {\large Chapter 10 \textcite{Agresti-2007}}\\
+ \@author\\
+ \@date\par\vspace{-0.3cm}
+ \noindent\hrulefill\\
+
+ \vspace{0.5cm}
+}
+\makeatother
+\newcommand{\ie}{\emph{i.e. }}
+\newcommand{\eg}{\emph{e.g. }}
+\newcounter{problem}
+\setcounter{problem}{1}
+\newcommand{\problem}{\noindent\textbf{Problem \arabic{problem}}\\
+  
+  \vspace{-0.3cm}%
+  \refstepcounter{problem}}
+\begin{document}
+\maketitle
+
+\noindent\textbf{Setup}
+
+<<setup>>=
+library(MASS)
+library(glmmML)
+library(lme4)
+library(vcd)
+options(width=70)
+@
+
+\section{Introduction}
+\label{sec:introduction}
+In the previous chapter it was shown how, sometimes, observations
+occur in clusters, that is groups based on any type of association among
+observations; for example in longitudinal studies where a subject's
+response is recorded at various times the observations for a
+particular subject form a cluster. We expect observations within
+a cluster to be more alike than those from another cluster, and
+because of that we need models that consider that association,
+otherwise, as noted by \citeauthor{Agresti-2007} the standard error of
+the estimates would be biased. Chapter 9 described one way to handle
+correlated, clustered data that focused on marginal distributions and
+estimated factor effects for all the population; in contrast the
+models presented in this chapter estimate factor effects conditional
+on the subjects. This is reflected by the inclusion of a separate term
+for each cluster, terms that are supposed to vary across clusters. As
+it is discussed throughout the chapter the cluster--specific term may
+reflect unmeasured predictors that translate in heterogeneity among
+observations. 
+
+\section{Random effects modeling of clustered categorical data}
+\label{sec:rand-effects-model}
+The author starts this section by distinguishing \emph{fixed} and
+\emph{random} effects; the former apply to all categories of interest,
+like gender or treatment, while the latter apply to a sample or a
+specific cluster.\\
+
+To understand how these two types of effects are included in the model,
+the author  first reviews how generalized linear  models (GLMs) extend
+ordinary regression to allow  non--normal responses and a link function
+of the  mean. As  a next step,  generalized linear mixed  models GLMMs
+extend GLMs to allow the inclusion  of random effects as well as fixed
+effects in  the linear predictor. For  cluster $i$ a  random effect is
+denoted as $\mu_i$.  It should be noted that, in practice, $\mu_i$ is
+unknown, however it's treated as random variable that comes from a
+normal distribution with mean $\alpha$  and variance of $\sigma^2$
+($\mu, N(\alpha,\sigma^2)$).\\ 
+The random effect can be included in the  model as an intercept,
+as a covariate or both. In  this section the author then describes the
+common case where  $\mu_i$ is included as a  intercept, models that
+receive the name of \emph{random intercept models} and it's
+represented as follows,
+\begin{eqnarray*}
+  g(\mu_{it})=\mu_i+\beta x_{it}
+\end{eqnarray*}
+Note that this model has as many intercepts as clusters, however if we
+include the expected value of $\mu_i$ into the model and regard it as
+a random normal variable with a mean of 0 and a variance of $\sigma$
+we have a model,
+\begin{eqnarray*}
+  g(\mu_{it})=\mu_i+\alpha+\beta x_{it}
+\end{eqnarray*}
+that takes the value of $\alpha$ when $x_{it}=0$, but more importantly
+it reduces the number of additional parameters to be estimated to
+$\sigma^2$. This value represents the variability among clusters,
+which in some studies may be interpreted as heterogeneity among
+clusters caused by not including certain explanatory variables. In
+other words it reflects terms that would be in the fixed effects if
+those explanatory variables had been included.\\
+
+Next, the author describes GLMM models for binomial responses, that is,
+\begin{eqnarray*}
+  logit[P(y_{i1}=1)]=\mu_i+\alpha+\beta; \quad logit[P(y_{i2}=1)]=\mu_i+\alpha
+\end{eqnarray*}
+model that is called \emph{logistic--normal model}, normal because the
+intercept term is assumed to come from a normal distribution (see
+above). As for any GLMM this model assumes that the observations from
+the same cluster are more alike than observations from different
+clusters. For example if we apply this model to the questions about
+helping the environment discussed in chapter 8, this would mean that a
+subject who answers ``yes'' to question 1 is more likely to answer
+``yes'' to the second question, and the same for a ``no'' answer;
+something that is reflected in the contingency table.
+\begin{table}[h]
+  \caption{Opinions related to environment}
+  \label{tab:environment}
+\begin{center}
+ \begin{tabular}{ccc}
+   \hline
+   \multirow{2}{*}{Pay Higher taxes}%
+   &\multicolumn{2}{c}{Cut living standards}\\\cline{2-3}
+   &Yes&No\\\hline
+   Yes&227&132\\
+   No&107&678\\\hline
+ \end{tabular} 
+\end{center}
+\end{table}
+ where the ``yes/yes'' and ``no/no'' cells represent the higher
+ proportion of the sample, which implies that the odds ratio is
+ positive just as the log-odds ratio. This is explained in
+ \citeauthor{Agresti-2007} as, ``when a higher proportion of cases have
+ outcomes ($y_{i1}=1, y_{i2}=1$) or ($y_{i1}=0, y_{i2}=0$) the
+ association between repeated responses is positive and greater
+ association results from greater heterogeneity, larger $\sigma$.\\
+ 
+\subsection{Sacrifices for the environment}
+\label{sec:sacr-envir}
+This subsection revises the example of chapter 8 about sacrifices that
+people are willing to make in order to help the environment. The data
+is presented in table \ref{tab:environment}.\\
+To fit these models \citeauthor{Thompson-2009} uses the function
+\texttt{glmmPQL} from the \texttt{MASS} package. This function needs
+un-grouped data so first we construct the data frame:
+<<data.constructiontb10.1>>=
+tb10.1 <- data.frame(question = c(0, 1), response = c(rep(c(1,
+    1), 227), rep(c(1, 0), 132), rep(c(0, 1), 107), rep(c(0,
+    0), 678)))
+tb10.1$question <- ifelse(tb10.1$question == 0, "high.tax", "cut.liv")
+tb10.1$question <- factor(tb10.1$question, levels = c("cut.liv",
+    "high.tax"))
+tb10.1$case <- rep(1:(nrow(tb10.1)/2), each = 2)
+@
+
+Note that we reversed the levels of the \texttt{question} vector and
+how the index vector (\texttt{case}) was constructed.\\
+With the data correctly constructed we can fit the model
+<<fit.tb10.1>>=
+## library(MASS)
+glmmmPQL10.1 <- glmmPQL(response ~ question, random = ~1 | case,
+    family = binomial, data = tb10.1)
+summary(glmmmPQL10.1)
+@
+
+Note that the $\beta$ estimate is the same as that reported in
+\citeauthor{Agresti-2007}, however its standard error is lower, as
+well as the estimate of the standard deviation ($\sigma$), 2.36 versus
+2.85.\\
+A different $\beta$ estimate but with closer standard error and
+standard deviation estimates are found with the \texttt{glmmML}
+function from the package with the same name.
+<<fit2.tb10.1>>=
+## library(glmmML)
+summary(glmmML(response ~ question, cluster = tb10.1$case, family = binomial,
+    data = tb10.1))
+@
+
+\citeauthor{Agresti-2007} mentions that the $\beta$ estimate of 0.210
+is the same as that calculated with conditional maximum likelihood as
+it was done in chapter 8. According to the author this is common when
+the sample log odds ratio is positive.\\
+
+\subsection{Differing effects in conditional models and marginal models}
+\label{sec:margin-vs-condition}
+This subsection describes the differences among marginal and conditional
+models about theirs interpretations; basically one can say that the
+inferences in marginal models apply to the population, that is, they
+are population--averaged, while the interpretations in the conditional
+models are cluster--specific. The author exemplifies this by comparing
+the estimates obtained in the environmental example, for the marginal
+model ($exp(0.104)=1.11$)  and the conditional model
+($exp(0.210)=1.23$). He mentions that when the link function is
+non-linear, like the logit, the population averaged effects of
+marginal models are typically smaller in magnitude than the
+cluster--specific effects as it's illustrated in the following figure:
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.4\textwidth]{supp_data/fig10-1}
+  \caption{Logistic random-intercept model, showing the conditional (subject-specific) curves and the marginal (population-averaged) curve averaging over these}
+\label{fig:cond-vs-margin}
+\end{figure}
+This is because the marginal effects are the average of the
+cluster--specific effects ; the difference between the two effects is
+greater as the cluster--specific curves are more spread out, in other
+words as the spread of  the random effect ($\sigma$) is greater.
+
+\section{Examples of random effects models for binary data}
+\label{sec:exampl-rand-effects}
+
+\subsection{Small--area estimation of binomial probabilities}
+\label{sec:small-area}
+Although the name  and the description suggest that  this approach is
+specific for estimation of  parameters in geographical studies with few
+observation, one  can generalize to say  that this approach  is used to
+estimate  parameter  for  categorical  predictors (factors)  when  the
+sample  size for  each  level (or  combination  of levels,  if we  are
+working  with multiple explanatory  variables) is  small. In  the area
+example, if we have $i$  areas, where $i=1,\ldots,n$, the fixed effect
+logit model  would be,  $logit(\pi_i=1)=\beta_i$ which is  a saturated
+model having $i$ parameters. Under this model, let $T_i$ be the number
+of observations  for area $i$ of  which $y_i$ are  the successes, then
+when we  treat $y_i$ as  an independent binomial variate,  the maximum
+likelihood estimate for $\pi_i$ is the sample proportion
+$\pi=y_i/T_i$. Now, because we have, in some cities/levels, few
+observations, the sample proportions may be a poorly estimate of
+$\pi_i$, among other things, because these proportions would have a
+large standard error.\\
+On the other hand, random effects model that treat each area as a
+cluster, express the model as, $logit(\pi_i=1)=\mu_i+\alpha$, where
+$\mu_i$ is a normally (but unknown) variable with a mean of 0 and
+standard deviation of $\sigma$, thus the model has only two
+parameters, $\alpha$ and the variance of $\mu_i$, $\sigma$ instead of
+the n parameters in the previous model. As the author mentions, the
+assumptions that the logits of probabilities ($logit(\pi_i)$) vary
+according to a normal distribution, the estimation of a particular
+probability uses all the information available, thus the estimate for a
+given area is a \emph{weighted average} of the sample proportion for
+the area of interest and the overall proportions for all the
+areas. This estimate, $\hat\pi_i$ gives more weight to sample
+proportions as $T_i$ grows.\\
+
+\citeauthor{Agresti-2007} illustrates these models with the data of
+free-throws showed in table 10.2.\\
+In \textsf{R} we fit this data either with the \texttt{glmmPQL} or the
+\texttt{glmmML} function. Note that as the previous cases the results
+obtained with these functions do not match exactly those presented in
+\textcite[p. 303]{Agresti-2007}.\\ First we fit the models, with the two functions mentioned,
+<<model.fit.tb10.2>>=
+## library(MASS)
+ load("supp_data/tb10-2.rda")
+summary(glmmPQL(y/n ~ 1, random = ~1 | player, weights = n, family = binomial,
+    data = tb10.2))
+## library(glmmML)
+summary(glmmML(y/n ~ 1, cluster = tb10.2$player, weights = tb10.2$n,
+               family = binomial, data = tb10.2))
+@
+
+Note that the first function gives very different results, particularly
+for the standard deviation estimate, than those mentioned in
+\citeauthor{Agresti-2007} ($\alpha$=0.908, $\hat\sigma$=0.422). On the
+other hand, the results of the second function are closer to those mentioned.\\
+
+\paragraph{Update}
+\label{sec:update}
+Another function that can fit GLMMs is \texttt{lmer} from the
+\texttt{lme4} package. Among the advantages of this functions is that
+it provides values for the BIC or AIC information criteria, but also
+it allows the calculation of fitted values, thing that, at least, is
+difficult with the other functions.
+
+<<model.fit2.tb10.2>>=
+## library(lme4)
+summary(lmer.tb10.2 <- glmer(y/n ~ 1 | player, weights = n, family = binomial,
+    data = tb10.2)) ## previously lmer
+@
+
+With this variable we can obtain the fitted values and compare them
+with the sample proportions as it is shown on table 10.2.
+<<fitted.values.tb10.2>>=
+cbind(tb10.2[, 1:2], Obs = round(tb10.2[, 3]/tb10.2[, 2], 3),
+    Fit = round(exp(fitted(lmer.tb10.2))/(1 + exp(fitted(lmer.tb10.2))),
+        3))
+@
+
+\citeauthor{Agresti-2007} highlights the much narrower range of the
+estimated probabilities (0.61--0.76) than the sample proportions
+(0.17--1.00). Note that those calculated with the \texttt{lmer}
+function give an even narrower range (0.65--0.68).\\
+Now, whether the fitted model is appropriate is left for the discussion
+in section 10.5.2.
+
+\subsection{Teratology example}
+\label{sec:teratology-example}
+This section analyzes the data from a teratology study, first
+introduced in section 9.2.4. 
+Because we already constructed the data (both in grouped and ungrouped
+form) we can simply import into the present \textsf{R} session.
+<<data.import.tb9.4>>=
+#grouped data
+tb9.4 <- read.table("supp_data/tb9-4")
+colnames(tb9.4) <- c("group", "litter.size", "num.dead")
+tb9.4$case <- 1:nrow(tb9.4)
+tb9.4$group <- factor(tb9.4$group, levels = 1:4)
+## ungrouped data
+tb9.4long <- read.table("supp_data/tb9-4long", header = TRUE)
+tb9.4long$group <- factor(tb9.4long$group, levels = 1:4)
+@
+
+With \texttt{glmmML} or \texttt{lmer} functions we can use either of
+them, just remember that if we use the grouped data we need to express
+the response variable as a proportion of positive outcomes and include
+a \texttt{weights} argument in the formula. Note also that in case we
+didn't have a data frame it would be easier to construct and work a grouped
+data than an ungropued one, an advantage of these functions compared
+with those that were used for GEEs.\\
+Following are the commands used to fit the model with both mentioned
+functions as well as with both data frames, however, only the results
+of two out of the four commands is shown.
+<<model.fit.tb9.4>>=
+#With grouped data
+## library(glmmML)
+glmmML(num.dead/litter.size ~ group, cluster = case, weights = tb9.4$litter.size,
+    family = binomial, data = tb9.4)
+## library(lme4)
+glmer(num.dead/litter.size ~ group + (1 | case), family = binomial,
+    weights = litter.size, data = tb9.4)
+# With ungrouped data
+glmer(outcome ~ group + (1 | case), family = binomial, data = tb9.4long)
+glmmML(outcome ~ group, cluster = tb9.4long$case, family = binomial,
+    data = tb9.4long)
+@
+
+Note how the random intercept is specified in the \texttt{lmer}
+function
+<<model.fit2.tb9.4,echo=false>>=
+(lmer.tb9.4 <- glmer(num.dead/litter.size ~ group + (1 | case),
+    family = binomial, weights = litter.size, data = tb9.4))
+(glmmML.tb9.4 <- glmmML(num.dead/litter.size ~ group, cluster = case,
+    weights = tb9.4$litter.size, family = binomial, data = tb9.4))
+@
+
+\begin{table}[h]
+  \centering
+  \caption{Comparison of estimates from \textcite{Agresti-2007} and those 
+    calculated in \textsf{R} with two functions}
+  \label{tab:GLMM-comparison}
+  \begin{tabular}{cccc}
+    \hline
+    \rule[-3mm]{0mm}{8mm}%
+    Estimate&Agresti-2007&\texttt{glmmML}&\texttt{lmer}\\\hline
+    (Intercept)& 1.802 (0.362)& 1.809 (0.3605)&1.8095 (0.3286)\\ 
+    group2     &-4.515 (0.736)&-4.540 (0.7326)&-4.5398 (0.6779)\\ 
+    group3     &-5.855 (1.190)&-5.884 (1.1743)&-5.8838 (1.1764)\\ 
+    group4     &-5.594 (0.919)&-5.607 (0.9050)&-5.6067 (0.8619)\\
+    $\sigma$   &1.53          & 1.511        &  1.5113\\\hline
+  \end{tabular}  
+\end{table}
+Note that the results calculated in \textsf{R} vary from those in
+Agresti, however the difference isn't big. In table 10.2 it's shown
+the results from the GEE model as well as those from the binomial
+maximum likelihood. Interesting the results are similar, however the
+assumptions that underlie those models are different. First the logistic
+model,
+$logit(\pi_{it})=\alpha+\beta_2z_{i2}+\beta_3z_{i3}+\beta_4z_{i4}$,
+assumes that the group effect on the outcome are the same across the
+different litters and more important that the outcomes are independent
+of the others, an assumption that isn't realistic because fetuses in a
+litter are likely to be related in someway. This relationship is
+indicated in table \ref{tab:GLMM-comparison}.\\
+
+\subsection{Repeated responses on similar survey items}
+\label{sec:repeted-resp}
+This section shows data of a survey on whether a person supports or not
+abortions under 3 different scenarios (variable treated as random),
+the responses distinguished between males and females (fixed
+variable). The model for responses in favor of abortion ($y_{it}=1$)
+is,
+\begin{eqnarray}
+  \label{eq:1}
+  logit[P(y_{it}=1)]=\mu_i+\beta_t+\gamma x_i
+\end{eqnarray}
+where $x_i$ is an indicator variable that equals 1 for males and 0 for
+females, $\beta_t$ represents the parameters for all the 3 different
+scenarios under which abortion is
+considered. \citeauthor{Agresti-2007} notes that because there is no
+intercept term (no $\alpha$) there are no constraints for $\beta_t$
+(\ie no category is set to zero).\\
+For fitting this model in \textsf{R}, \citeauthor{Thompson-2009}
+describes a different way of setting up the data, ungrouped
+data. First we construct the grouped data from table 10.4. Note that
+in table 10.4 the question that varies fastest is question 3, then
+question 1 and finally question 2, this order is reflected in the
+constriction. Next, we
+``collapse'' the columns for the questions into one, this with the
+\texttt{reshape} function.
+<<data.construction1.tb10.4>>=
+tb10.4 <- data.frame(expand.grid(Q3 = c(1, 0), Q1 = c(1, 0),
+    Q2 = c(1, 0), gender = c("M", "F")), count = c(342, 26, 6,
+    21, 11, 32, 19, 356, 440, 25, 14, 18, 14, 47, 22, 457))
+tb10.4long <- reshape(tb10.4, varying = c("Q1", "Q2", "Q3"),
+    direction = "long", v.names = "response", timevar = "question")
+tb10.4long$question <- factor(tb10.4long$question, levels = 3:1)
+@
+
+A couple of notes about the last command. First note that the
+\texttt{varying} argument is for those columns that will be collapsed,
+then the \texttt{direction} argument must be either \texttt{"long"} or
+\texttt{"wide"}, depending what are we trying to do; in this case we
+are converting a ``wide'' table into a ``long'' one, thus the value is
+the latter. By omitting some of the above arguments it seems that the
+\texttt{v.names} argument represents the name of the collapsed column
+and it is mandatory for the function to work; its
+value can be anything we want, of course it should be something that
+makes sense, in this case \texttt{response}. On the other hand the
+\texttt{timevar} argument is optional, if we omit it a column with
+the name \texttt{time} will be created, as with the previous argument
+it's better to give it a useful name, in this case \texttt{question}.\\
+Once we have created the long table we need to make it ``ungrouped''
+by repeating each row \texttt{count} times, a step that was done
+before with other data frames, however note that in the index command
+some columns are dropped. Later those dropped columns are re-created
+with the correct values,
+<<data.construction2.tb10.4>>=
+tb10.4long <- tb10.4long[rep(1:nrow(tb10.4long), tb10.4long$count),
+    c("response", "gender", "question")]
+tb10.4long$id <- factor(rep(1:1850, 3))
+@
+
+Now we can fit the model with the functions \texttt{glmmPQL} and \texttt{lmer}
+<<model.fit.tb10.4>>=
+## library(MASS)
+(glmmPQL(response ~ gender + question, random = ~1 | id, family = binomial,
+    data = tb10.4long))
+## library(lme4)
+(glmer(response ~ gender + question + (1 | id), family = binomial,
+    data = tb10.4long))
+@
+
+However, as noted above, \textcite[p. 306]{Agresti-2007} fits a model
+with no intercept, $logit[P(Y_{it})]=\mu_i +\beta_t +\gamma x_i$. In
+\textsf{R} to indicate that the model has no intercept we need to
+include in the formula the term \texttt{-1}, also we need to put first
+the variable whose estimates won't be restricted, in this case \texttt{question},
+<<model.fit2.tb10.4>>=
+(glmmPQL(response ~ -1 + question + gender, random = ~1 | id,
+    family = binomial, data = tb10.4long))
+(glmer(response ~ -1 + question + gender + (1 | id), family = binomial,
+    data = tb10.4long))
+@
+
+Note that the estimates obtained with \texttt{glmmPQL} are closer to
+those reported in \citeauthor{Agresti-2007}, however the estimate of
+the standard error is half the value reported.\\
+
+Because all the question's parameters were estimated the odds ratio of
+being in favor of abortion under one scenario instead of another is
+computed by subtracting the estimates, for instance the odds ob being
+in favor of abortion under option 1 instead of option 3 is:
+$exp(\beta_1-\beta_3) = exp(0.356847045-(-0.510887814)) =
+exp(0.8677349) = 2.4$ times the odds for option 3. Although the
+standard error reported in \texttt{R} is smaller than that reported in
+\citeauthor{Agresti-2007}, 4.3 versus 8.6, it still represents a
+high degree of heterogeneity and also suggest a strong association
+among the responses, note that responses 1,1,1 and 0,0,0 represent
+the great majority of the responses. The author mentions that in the
+US people tend to be either uniformly opposed or in favor about abortion.\\
+
+\citeauthor{Agresti-2007} indicates that including an interaction term
+does not improve the fitting, in fact if one looks at the p-values it
+seems sensible to drop the gender term. We can test this by fitting a
+model without gender and compare with the previous model.
+<<model.comparison>>=
+## library(lme4)
+lmer.tb10.4 <- glmer(response ~ gender + question + (1 | id),
+    family = binomial, data = tb10.4long)
+lmer2.tb10.4 <- glmer(response ~ question + (1 | id), family = binomial,
+    data = tb10.4long)
+anova(lmer2.tb10.4, lmer.tb10.4, test = "Chisq")
+@
+
+This provides strong evidence in favor of dropping the gender
+effect. Note that the comparison was made with \texttt{lmer} models;
+for some reason the \texttt{anova} function doesn't seem to work with
+\texttt{glmmPQL} objects.\\
+
+\subsection{Depression study revisited}
+\label{sec:depr-study}
+This subsection re-evaluates the example of section 9.1.2 about the
+effects of a new drug on mental depression which was evaluated at 3
+times in patients with two initial conditions. The model fitted in
+chapter 9 allowed a treatment--time interaction.
+\begin{eqnarray*}
+  logit[P(Y_{t}=1)]=\alpha +\beta_1s +\beta_2d +\beta_3t +\beta_4(d\times t)
+\end{eqnarray*}
+Now, the subject specific model would be,
+\begin{eqnarray*}
+  logit[P(Y_{it}=1)]=\mu_i +\alpha +\beta_1s +\beta_2d +\beta_3t +\beta_4(d\times t)
+\end{eqnarray*}
+This model can be fitted in \textsf{R} either with \texttt{glmmPQL},
+\texttt{glmmML} or \texttt{lmer}, with the same estimates and
+basically the same standard errors, which are very close to those
+reported in \citeauthor{Agresti-2007} which in turn are similar to
+those found with GEE.
+<<model.fitb9.1>>=
+tb9.1 <- read.table('supp_data/tb9-1', header=TRUE)
+glmer(outcome ~ diagnose + time + treat + time * treat + (1 |
+    case), family = binomial, data = tb9.1)
+@
+
+The  author notes that the small standard deviation implies little
+heterogeneity and therefore the estimates are not only similar to
+those of GEE but also to those found by ordinary logistic regression.
+<<model.fit2.tb9.1>>=
+glm(outcome ~ diagnose + time + treat + time * treat, family = binomial,
+    data = tb9.1)
+@ 
+
+\subsection{Choosing marginal or conditional models}
+\label{sec:margin-vs-conditional}
+This subsection compares situation where GEEs are better than GLMMs
+and vice versa.\\
+
+\paragraph{GEEs}
+\label{sec:gees}
+ are better when the main focus is on comparing groups that are
+ independent samples or effects of interest are between clusters
+ rather than within cluster.
+ 
+\paragraph{GLMMs}
+\label{sec:glmms}
+are better when we want to model the joint distribution or when we want
+to estimate cluster--specific effects or its variability; also when we
+want to specify a mechanism that could generate a positive correlation
+among clustered observations.\\
+\textcite[p. 309]{Agresti-2007} mentions that with some extra
+calculation, one can recover information about marginal distributions
+from a conditional model; that is, ``a conditional model implies a
+marginal model but not vice versa, which means that a conditional
+model has more information.''\\
+Despite the choice of model the inferential conclusions do not vary considerably.
+
+\subsection{Conditional models: random effects versus conditional ML}
+\label{sec:random-effects}
+This subsection compares random effects models with conditional
+maximum likelihood models, the latter discussed in section 8.2.4. The
+author notes that because conditional ML models eliminate the random
+effect, one can not estimate its variability nor its effects on the
+probability, thus the inferences are limited to the fixed
+effects. Also if the number of observation is large, the computation
+of the conditional ML can be intensive.
+
+\section{Extensions to multinomial responses of multiple random effect terms}
+\label{sec:multinom-respon}
+As the name suggest, this section extends the models to handle
+multiple responses but more interesting to include more than one
+random effect in the form of a random slope.\\ It should be noted that
+when working with ordered responses the structure used is that for
+proportional odds.
+
+\subsection{Insomnia study revisited}
+\label{sec:insomn-study}
+This example was analyzed in section 9.3.2 thus we can use the data
+to fit the logistic--normal model,
+$logit[P(Y_{it}=1)]=\mu_i +\alpha_j +\beta_it +\beta_2x
++\beta_3(t \times x)$.
+
+As with other examples the results of including a random intercept
+$\mu_i$ doesn't change the estimate's effects, however with the random
+effects model we can obtain a value ($\sigma$) that tell us that there
+is a relatively large heterogeneity among the clusters.\\
+
+\paragraph{Note on R fitting}
+\label{sec:note-r-fitting}
+In \textcite[p. 243]{Thompson-2009} a method is described for fitting
+multinomial random effects model, however is very complicated. Looking
+on the internet I've found the package \texttt{mixcat}\footnote{In
+  order to install this package the linux package,
+  \textbf{libgls0-dev} must be installed first} which
+supposedly can fit these models, however it doesn't report an estimate
+of the standard deviation, and the estimates are the same as those from
+a GEE. From an initial test the package \texttt{lme4} is able to fit
+the model, however the estimates have a different sign (and value) than those from
+\citeauthor{Agresti-2007}, also the estimate of the standard deviation
+has a different value.
+
+<<model.fit.tb9.6>>=
+## library(lme4)
+tb9.6 <- read.table('supp_data/tb9-6', header = TRUE)
+lmer(outcome ~ treat * occasion + (1 | case), data = tb9.6)
+@ 
+
+\subsection{Bivariate random effects and association heterogeneity}
+\label{sec:bivar-rand-effects}
+This section evaluates a study about a comparison between two surgical
+procedures, a standard and a new one, about whether they provoke an
+adverse effect on the patient. Data were collected from 41 different
+studies. \citeauthor{Agresti-2007} indicates that when the strata (in
+this case the studies) are themselves a sample, a random effects
+approach is natural. Thus we move from the model,
+\begin{eqnarray*}
+  logit[P(Y_{i1}=1)]=\mu_i+\alpha+\beta \qquad logit[P(Y_{i2}=1)]=\mu_i+\alpha
+\end{eqnarray*}
+which is a model that assumes the same treatment effect for all the
+studies, to the model,
+\begin{eqnarray*}
+  logit[P(Y_{i1}=1)]=\mu_i+\alpha+(\beta+\upsilon_i) \qquad logit[P(Y_{i2}=1)]=\mu_i+\alpha
+\end{eqnarray*}
+which is a model that allows the treatment effect to vary between
+studies. The standard deviation of $\upsilon_i$ describes the
+variability in the odds ratio for all the 41 studies, something that
+seems reasonable when we look at some of the data (table 10.8).\\
+To fit the model in \textsf{R} we need to import the data from
+\citeauthor{Agresti-2007}'s website and then use the \texttt{lmer} function.
+<<modelfit.tb10.8>>=
+tb10.8 <- read.table("supp_data/tb10-8", header = TRUE)
+# Model with random intercept only
+glmer(y/n ~ treat + (1 | study), weights = n, family = binomial,
+    data = tb10.8)
+# Model with a random intercept and random slope
+fit.lmer.tb10.8 <- glmer(y/n ~ treat + (treat | study), weights = n, family = binomial,
+    data = tb10.8)
+
+@
+
+The estimates and their standard errors are very close to those
+reported in \citeauthor{Agresti-2007}, namely $\beta=$-1.299 with
+$SE=$0.277 and $\sigma_v=$1.52 versus $\beta=$-1.297 with
+$SE=$0.269 and $\sigma_v=$1.50. This suggest that there is
+considerable variation among odds ratio from different studies.\\
+
+Comparing with the model with only a random intercept,
+\citeauthor{Agresti-2007} indicates that the one with a random slope
+has a smaller p-value for the null hypothesis of $\beta=0$ (-4.819
+versus -10.122). He explains that as $\hat\sigma_v$ increases so does
+the standard error of the treatment estimate ($\hat\beta$) tends to
+increase, in other words, the more the treatment effect varies among
+studies, the more difficult is to estimate precisely the mean of that
+effect. When $\sigma_v=0$ both models have the same $\hat\beta$ estimate.
+
+At the end of the section \citeauthor{Agresti-2007} notes that, as
+with other examples, the model odds ratios are comprised in a range
+much narrower than those calculated from the observed values.\\
+To do this in \textsf{R}, first, we need to calculate the fitted
+values, both positive and negative outcomes, then rearrange these values
+so that they are in one column. This should be done for the observed
+values too.
+<<data.construction.tb10.8long>>=
+# Sample negative outcomes
+tb10.8$no <- tb10.8$n - tb10.8$y
+# Fitted positive and negative outcomes
+tb10.8$fit.y <- tb10.8$n * fitted(fit.lmer.tb10.8)
+tb10.8$fit.no <- tb10.8$n * (1 - fitted(fit.lmer.tb10.8))
+# Re-arrangement of the data frame
+tb10.8b <- tb10.8
+tb10.8b$response <- rep(1, nrow(tb10.8b))
+tb10.8c <- tb10.8
+tb10.8c$response <- rep(0, nrow(tb10.8b))
+tb10.8group <- rbind(tb10.8b, tb10.8c)
+tb10.8group$count <- c(tb10.8b$y, tb10.8$no)
+tb10.8group$fit <- c(tb10.8b$fit.y, tb10.8$fit.no)
+# Delete unused columns and variables
+tb10.8group <- tb10.8group[, -c(3, 4, 5, 6, 7)]
+rm(tb10.8b, tb10.8c)
+@
+
+To check that the data frame was correctly constructed we extract the
+same observations reported in table 10.8
+<<data.check.tb10.8>>=
+xtabs(count ~ treat + response + study, data = tb10.8group)[,
+    , c(1, 5, 6)]
+@
+
+Now we can calculate the odds ratio with the function
+\texttt{oddsratio} from the \texttt{vcd} package; first we compute
+for those studies showed in table 10.8
+<<oddsratio.tb10.8>>=
+## library(vcd)
+# Sample odds ratio
+oddsratio(xtabs(count ~ treat + response + study, data = tb10.8group)[,
+    , c(1, 5, 6)], log = FALSE)
+# Fitted odds ratio
+oddsratio(xtabs(fit ~ treat + response + study, data = tb10.8group)[,
+    , c(1, 5, 6)], log = FALSE)
+@
+
+Then, with the \texttt{min} and \texttt{max} functions we can extract
+the boundaries of the range of odds ratios from all the studies.
+<<oddsratio2.tb10.8>>=
+## Sample odds ratio (min and max values)
+odds_sample <- oddsratio(xtabs(count ~ treat + response + study, data = tb10.8group),
+    log = FALSE)
+min(exp(odds_sample$coefficients))
+max(exp(odds_sample$coefficients))
+
+## Fitted odds ratio (min and max values)
+odds_fit <- oddsratio(xtabs(fit ~ treat + response + study, data = tb10.8group),
+    log = FALSE)
+min(exp(odds_fit$coefficients))
+max(exp(odds_fit$coefficients))
+@
+
+Note that for study 5 the sample odds ratio isn't infinite (due to a division
+by zero) because the \texttt{oddsratio} function sums 0.5 to each cell
+before computing in order avoid ending up with undefined estimates
+\parencite[see][p. 31]{Agresti-2007}.\\
+
+\section{Multilevel (hierarchical) models}
+\label{sec:hierarch-models}
+Hierarchical models refers to observations that have a nested nature,
+for example a study that measures the performance of students may
+classify them according to their gender or socio-economic status, but
+at the same time one may wish to classify students based on the school
+they attend. Fort this, other level, own may be interested in measure
+characteristics like the amount spend by student, salary of the
+teachers, etc.\\
+
+An advantage of using random effects for nested models, as pointed out
+in \citeauthor[p. 314]{Agresti-2007}, is that the number of parameters (an
+therefore the degrees of freedom) get reduced. However as noted
+latter, we can not, always consider a particular variable as random, we
+need to analyze if the number and the nature of the sample suggest so.\\
+For the student/school example, the model for the student level may
+measure whether the student passes grade or not (response variable) in
+function of gender, race or nay previous failure. This model would be,
+\begin{eqnarray*}
+  logit[P(Y_{it}=1)]=\alpha_i +\beta_1x_{it1} +\beta_2x_{it2} +\ldots +\beta_kx_{itk}
+\end{eqnarray*}
+where $i$ indicates school and $t$ student.\\
+The school level, then, could be related through the intercept value,
+\begin{eqnarray*}
+  \alpha_i=\mu_i +\alpha +\gamma_1w_{i1} +\ldots + \gamma_lw_{il}
+\end{eqnarray*}
+where $w_{i1}, \ldots ,w_{il}$ are the explanatory variables that vary
+only at the school level ($i$); for example expenditure per student at
+school $i$.\\
+Substituting the value of $\alpha_i$ in the first equation we have,
+\begin{eqnarray*}
+   logit[P(Y_{it}=1)]= \mu_i +\alpha +\gamma_1w_{i1} +\ldots +
+   \gamma_lw_{il} +\beta_1x_{it1} +\beta_2x_{it2} +\ldots +\beta_kx_{itk}
+\end{eqnarray*}
+Note that the random effect ($\mu_i$) enters only at the level 2,
+however more general model might include random terms in both levels,
+or include a random intercept.\\
+
+Section 10.4.2 shows an example of this type of model from
+\textcite[pp. 296--304]{Raudenbush-2002}. This study measured, for the
+student level, the socio--economic status, gender, whether he/she spoke
+central thai dialect, if he/she had breakfast and if he/she had some
+pre--primary experience. This is represented in the model,
+\begin{eqnarray*}
+  logit[P(Y_{it}=1)]=\alpha_i +\beta_1ses_{it} +\beta_2gender_{it}
+  +\beta_3DI_{it} +\beta_4BR_{it} +\beta_5PRE_{it}
+\end{eqnarray*}
+The second level (school) related to the first through the intercept
+$\alpha_i$ and meassures the school mean SES, size of the school
+enrollment and the availability of the texts.
+\begin{eqnarray*}
+  \alpha_i=\mu_i +\alpha +\gamma_1meanses_{i} +\gamma_2size_{i} +\gamma_3texts_{i}
+\end{eqnarray*}
+
+For comparison, the authors, first, fit a model that only considers the
+differences for the sampled schools ($n=356$)
+\begin{eqnarray*}
+  logit[P(Y_{it}=1)]=\mu_i +\alpha
+\end{eqnarray*}
+This model has estimates, $\hat\alpha =-2.22$ and $\hat\sigma=1.30$,
+so the estimate of at least one retention is
+$exp(-2.22)/(1+exp(-2.22))=0.10$. For this, the 95\% CI is (0.01,
+0.58) which is a wide, non very informative, interval\footnote{It is
+  important to note that the data set isn't available in the book
+  nor in the author's website. Also the estimates for the nested model
+aren't provided in the book}.\\
+
+\section{Model fitting and inference for GLMMs}
+\label{sec:model-fitting}
+The final section briefly discuss the steps and problems involved in
+the fitting of Generalized Linear Mixed Models (GLMMs). The author
+mentions that the likelihood function for a GLMM refers to the fixed
+effects parameters $\alpha, \beta_1, \beta_2,\ldots ,\beta_k$ and the
+parameter $\sigma$ from a normal distribution with mean of zero and
+standard deviation of $\sigma$. Now, to obtain this function, software
+eliminates $\mu_i$ \textbf{(1)} by forming the likelihood function as if the
+$\mu_i$ values were known, and then \textbf{(2)} averaging that
+function with respect to the normal distribution of $\mu_i$
+($N(0,\sigma)$). The last step is the difficult one because the
+calculus base integral used to average with respect to the normal
+distribution of the random effects doesn't have a closed form.\\
+
+Section 10.5.2 describes the inference about the fixed effects. As it
+is usually done for other models the significance of a particular term
+is  evaluated comparing  the deviances  for  a model  with an  another
+without  that term.   This difference  has an  approximate chi-squared
+distribution.   In \textsf{R}  this  is done  with the  \texttt{anova}
+function.  Now,  inference about the  random effects like  testing the
+null hypothesis  that the variance  is zero, $H_0:\sigma^2=0$  is more
+complicated, because  the variance can  not be negative  and therefore
+the  null  distribution  of   $\hat\sigma$  is  not  even  approximate
+normal. An alternative for models containing a single random effect is
+to  test  the  null  hypothesis $H_0:\sigma=0$  versus  $H_a:\sigma  >
+0$. The null  distribution has probability 1/2 at  0 and 1/2 following
+the shape of a chi-squared distribution with df=1.  The test statistic
+value of 0 occurs when $\sigma =  0$, in which case the maximum of the
+likelihood function is identical under $H_0$ and $H_a$. When $\sigma >
+0$ and  the observed test  statistic equals $t$ (\ie  the $\hat\sigma$
+value), the P -value for  this test is half the right-tail probability
+above t for a chi-squared distribution with df = 1.
+% ======================
+\printbibliography
+\end{document}

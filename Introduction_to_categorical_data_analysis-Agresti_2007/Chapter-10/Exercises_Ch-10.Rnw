@@ -1,0 +1,565 @@
+% arara: pdflatex: { shell: true }
+% arara: biber
+% arara: pdflatex: { shell: true }
+% arara: pdflatex: { shell: true, synctex: yes }
+
+\documentclass[11pt,twoside]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage[english]{babel}
+\usepackage{graphicx,calc}
+\usepackage[svgnames]{xcolor}
+\usepackage[paper=letterpaper,divide={2.5cm,*,2cm}]{geometry}
+\usepackage[backend=biber,style=authoryear,maxcitenames=2,%
+maxbibnames=100,uniquename=false,uniquelist=false]{biblatex}
+\usepackage{graphicx,paralist,multirow,multicol,microtype,fancyvrb,url}%rotating,supertabular
+\usepackage{hyperref}
+\usepackage{Sweave}
+\usepackage{minted}
+
+\hypersetup{colorlinks=true,citecolor=black, linkcolor=black,urlcolor=SteelBlue4}
+ 
+\addbibresource{../../R_notes.bib}
+\DefineBibliographyStrings{english}{andothers={\mkbibemph{et al.}},}
+\AtEveryBibitem{\clearfield{month}}
+\AtEveryCitekey{\clearfield{month}}
+\renewbibmacro{in:}{%
+  \ifentrytype{article}{}{\printtext{\bibstring{in}\intitlepunct}}}
+\AtEveryBibitem{\clearlist{language}}
+\AtEveryBibitem{\clearfield{note}}
+\AtEveryBibitem{\clearfield{url}}
+\AtEveryBibitem{\clearfield{issn}}
+\DeclareFieldFormat{urldate}{}
+\DeclareFieldFormat[article]{pages}{#1}
+
+\renewenvironment{Sinput}{\minted[frame=single]{r}}{\endminted}
+\DefineVerbatimEnvironment{Soutput}{Verbatim}{frame=leftline}
+
+\title{Exercises from: Random Effects: Generalized Linear Mixed Models}
+\author{Saúl Sotomayor Leytón}
+\date{May 2012}
+\makeatletter
+\renewcommand{\maketitle}{%
+ \thispagestyle{empty}
+ \noindent{\Large\textbf{\@title}}\\
+ {\large Chapter 10 \textcite{Agresti-2007}}\\
+ \@author\\
+ \@date\par\vspace{-0.3cm}
+ \noindent\hrulefill\\
+
+ \vspace{0.5cm}
+}
+\makeatother
+\newcommand{\ie}{\emph{i.e. }}
+\newcommand{\eg}{\emph{e.g. }}
+\newcounter{problem}
+\setcounter{problem}{1}
+\newcommand{\problem}{\noindent\textbf{Problem \arabic{problem}}\\
+  
+  \vspace{-0.3cm}%
+  \refstepcounter{problem}}
+\begin{document}
+\maketitle
+
+\noindent\textbf{Setup}
+
+<<setup>>=
+library(survival)
+library(lme4)
+library(gee)
+options(width=70)
+@
+
+\problem
+First we set up the data. As it was stated in the notes the functions
+\texttt{glmmML} and \texttt{lmer} allow data to be grouped or
+ungrouped, however I'm not sure if the grouping variable was correctly
+set, therefore the analysis reported were done with the ungrouped data.
+<<data.construction1>>=
+tb8.10 <- read.table('supp_data/tb8-10')
+tb8.10long <- reshape(tb8.10, direction = "long", varying = c("believe.heav",
+    "believe.hell"), v.names = "response", timevar = "question")
+tb8.10long <- tb8.10long[rep(1:nrow(tb8.10long), tb8.10long$count),
+    ]
+tb8.10long$case <- 1:1120
+tb8.10long$question2 <- ifelse(tb8.10long$question == 2, "hell",
+    "heav")
+tb8.10long$question2 <- factor(tb8.10long$question2, levels = c("hell",
+    "heav"))
+row.names(tb8.10long) <- 1:nrow(tb8.10long)
+tb8.10long <- within(tb8.10long, {
+    rm(id, count)
+})
+@
+
+Then we fit the model. For this we have two options to use the
+\texttt{glmer} function from the \texttt{lme4} package or to use the
+\texttt{glmmML} function with some particular arguments for the method
+and the number of quadrature points. General forms for both are
+indicated below,
+\begin{Verbatim}[commandchars=\\\{\}]
+glmmML(formula, family=binomial, data, cluster, weights, \textcolor{red}{method}=c("Laplace", "ghq"), 
+\textcolor{red}{n.points}=8, boot=0)
+glmer(formula, data, family=family, \textcolor{red}{nAGQ}=1, weights, control=list(\textcolor{red}{maxIter}=300))
+\end{Verbatim}
+Important arguments are highlighted in red. In this sense, for the
+\texttt{glmmML} function we need to specify the method of numerical
+approximation, in this case we would choose \texttt{"ghq"} (which
+stands for Gauss-Hermite quadrature); also we would like to change the
+number of quadrature poins form its default 8 to a higher (or lower)
+value. Regarding the last point with the data for the present problem
+it seems to be a limit around 125 points; above that the function
+issues the message 
+\begin{Verbatim}
+Error en glmmML.fit(X, Y, weights, cluster.weights, start.coef, start.sigma,  : 
+  valor inicial en 'vmmin' no es finito 
+\end{Verbatim}
+For the \texttt{glmer} function we specify the number of quadrature
+points with the \texttt{nAGQ} argument (which apparently stantds for,
+number of Adaptative Gauss-Hermite quadrature points). With the data
+for this problem the function accepts values as high as 1000. The
+manual indicates that if it's set to 1 the behaviour is the same as
+for the \texttt{lmer} function, \ie it uses the Laplace approximation. An
+important option to avoid \emph{false convergence} is the number of
+iterations, whose value is 300 by default but can accept values as
+high as 3000.\\
+
+Now, regarding the fit of the data, it's interesting that with the
+Gauss-Hermite approximation the results are very different from those
+reported in \textcite[][p. 371]{Agresti-2007}, however with the Laplace
+approximation the results are very simmilar but a false--convergence
+message it's reported. Also interesting is that if the Laplace
+approximation is used with the grouped data the same values as those
+with the Gauss-Hermitte are reported.
+<<model.fit.lmer>>=
+glmer(response ~ question2 + (1 | case), data = tb8.10long, family=binomial)
+@
+
+Next, the commands used to fit the models with the Gauss-Hermite
+approximation, with the different quadrature points, are
+reported. It is important to note that except for the \emph{q} points
+of 400 and 1000 the function returns a warning message about a false
+convergence, this despite changing the number of iterations to up to
+10000. However it's interesting that for these q points values the
+AIC and BIC criteria are reported, thing that doesn't happen for q
+points of 400 or 1000
+<<model.fit.glmer>>=
+fit.glmer1.n2 <- glmer(response ~ question2 + (1 | case), data = tb8.10long,
+    family = binomial, nAGQ = 2)
+fit.glmer1.n10 <- glmer(response ~ question2 + (1 | case), data = tb8.10long,
+    family = binomial, nAGQ = 10)
+fit.glmer1.n100 <- glmer(response ~ question2 + (1 | case), data = tb8.10long,
+    family = binomial, nAGQ = 100)
+## fit.glmer1.n400 <- glmer(response ~ question2 + (1 | case), data = tb8.10long,
+    ## family = binomial, nAGQ = 400)
+## fit.glmer1.n1000 <- glmer(response ~ question2 + (1 | case),
+    ## data = tb8.10long, family = binomial, nAGQ = 1000)
+@
+
+The results are summarized in the following table
+\begin{table}[h]
+  \centering
+  \caption{Estimates for the fixed and random effects, for the data in
+    table 8.10, obtained with different quadrature points and compared
+    with those obtained with Laplace approximation and those reported
+    in \textcite{Agresti-2007} with q=1000}
+  \label{tab:glmer}
+  %\small
+  
+  \begin{tabular}{l*{7}{r}}
+    \hline
+    \rule[-2ex]{0pt}{5ex}&\textbf{Agresti}&\textbf{Laplace}
+    &\textbf{q=2}&\textbf{q=10}&\textbf{q=100}
+    &\textbf{q=400}&\textbf{q=1000}\\
+    \cline{2-8}
+    $\hat\beta$    &4.135 &4.718& 2.882& 2.882& 2.819& 0.702& 0.702\\[1mm] 
+    $\hat\beta$ SE &0.713 &0.405& 0.282& 0.282& 2.383& 0.111& 0.111\\[2mm] 
+    $\hat\sigma$   &10.199&7.251& 6.796& 6.561& 6.532& 1.155& 1.155\\[1mm]      
+    $\hat\sigma$ SE&1.792&--&--&--&--&--&--\\   
+    \hline
+  \end{tabular}
+\end{table}
+To sum up with more quadrature points the convergence is more likely.\\
+
+b) According to the values reported for $q=1000$ the odds of believing
+in heaven are $exp(0.702)=2.02$ times that of believing in hell.\\
+
+c) To fit the conditional logistic model, we use the \texttt{clogiy}
+function from the \texttt{survival} packages (see notes from chapter
+8).
+<<fit.clogit1>>=
+clogit(response ~ question2 + strata(case), method = "exact",
+    data = tb8.10long)
+@
+
+According to this, the odds of believing in heaven are
+$exp(\beta)=exp(4.14)=62.5$ times that of believing in hell, a result
+similar to that reported in \citeauthor{Agresti-2007} and that found
+with the Laplace approximation, see table \ref{tab:glmer}.\\
+
+\problem
+The definition of a succesful outcome under the two scenarios is
+different, under the first one a success is when a person agrees with
+abortion, but under the second one a success is when a person opposes
+with abortion. Now considering what was said about the position of americans about abortion
+\parencite[p. 306]{Agresti-2007} we would expect a negative odds ratio
+under the first scenario but a negative one under the second.\\
+
+b) The second question should be, ``whether the subject supports
+abortion if a woman wants it because she is unmarried (1=yes, 0=no).\\
+
+\problem
+Since we are being asked for the estimated probability we need to
+calculate
+$\hat\pi=exp(\mu_i+\alpha)/(1+exp(\mu_i+\alpha))=exp(\alpha)/(1+exp(\alpha))$, where
+$\hat\alpha=-3.24$ and $\hat\sigma=0.33$. For
+this we can define a function \texttt{antilogit}
+<<antilogit3>>=
+antilogit <- function(x) (exp(x)/(1 + exp(x)))
+@
+
+Then we can calculate the probabilities:
+\begin{enumerate}[i]
+\item $antilogit(-3.24)=\Sexpr{round(antilogit(-3.24),3)}$
+\item $antilogit(-3.24-2\times (0.33))=\Sexpr{round(antilogit(-3.24-2*(0.33)),3)}$
+\item $antilogit(-3.24+2\times(0.33))=\Sexpr{round(antilogit(-3.24+2*(0.33)),3)}$  
+\end{enumerate}
+
+b) A fixed effects model (\ie $logit(\pi_i)=\beta_i$) has as many
+parameters as counties, thus is a saturated model, conversly the random effects model
+has only 2 parameters $\alpha$ and $\sigma$ \parencite[see][p. 302]{Agresti-2007}.\\
+
+\problem
+This problem is similar to the example of section 10.2.1 thus we use
+the same commands as those in the notes (pp. 5-6), but first we
+construct the data
+<<data.construct>>=
+tb10.9 <- read.table("supp_data/tb10-9", header = TRUE)
+tb10.9 <- within(tb10.9, {
+    prop <- n.made/n.attempts
+})
+@
+
+Then we fit the model
+<<model.fit4>>=
+fit.glmer4 <- glmer(prop ~ 1 | game, weights = n.attempts, data = tb10.9,
+    family = binomial, nAGQ = 100) # nAGQ =1000
+fit.lmer4 <- glmer(prop ~ 1 | game, weights = n.attempts, data = tb10.9,
+    family = binomial)
+@
+
+Note the similar values obtained with the Gauss-Hermite 
+and with the Laplace approximation, respectively. According to the
+former, the intercept ($\hat\alpha$) estimate is -0.176 with a standard
+error ($\hat\sigma$) of 0.369.\\
+
+b) The probability for O'Neal of scoring on an average game is $exp(-0.176)/(1+exp(-0.176))=\Sexpr{round(exp(-0.176)/(1+exp(-0.176)),3)}$.\\
+
+c) This question ask for the estimated proportions of success
+throughout the games, thus we also  use the commands in the notes (p. 6)
+<<estim.prop4>>=
+tb10.9.res <- cbind(tb10.9[, 1:3], Obs = round(tb10.9[, 2]/tb10.9[,
+    3], 3), Fit.1 = round(exp(fitted(fit.glmer4))/(1 + exp(fitted(fit.glmer4))),
+    3), Fit.2 = round(exp(fitted(fit.lmer4))/(1 + exp(fitted(fit.lmer4))),
+    3))
+summary(tb10.9.res[, 4:6])
+@
+
+Based on the estimated values of $\alpha$ and $\sigma$ we can say
+that the proportion of successful free-throws vary between 0.56 to a
+maximum of 0.71 throughout the games, with a mean of 0.61.\\
+
+\problem
+First we construct the data
+<<data.construc5>>=
+tb.ex5 <- data.frame(C = 1:10, N = rep(5, 10), H = c(2, 4, 1,
+    3, 3, 5, 4, 2, 3, 1))
+tb.ex5$obs <- tb.ex5$H/tb.ex5$N
+tb.ex5
+@
+
+
+a) The observed proportions of heads corresponds to the model
+$logit(\pi_i)=\beta_i$.\\
+
+b) The random effects model for this data would be,
+$logit(\pi_i)=\mu_i + \alpha$, where $\mu_i$ comes from a normal
+distribution with a mean of 0 and a standard deviation of
+($\sigma$). To fit this model we use the following commands,
+<<model.fit5>>=
+fit.glmer5 <- glmer(obs ~ 1 | C, data = tb.ex5, weights = N,
+    family = binomial, nAGQ = 100) # nAGQ = 1000, options = list(maxIter = 1000)
+@
+
+\begin{Verbatim}[formatcom=\color{MidnightBlue}]
+Random effects:
+ Groups Name        Variance Std.Dev.
+ C      (Intercept) 2.6667   1.633   
+Number of obs: 10, groups: C, 10
+
+Fixed effects:
+            Estimate Std. Error z value Pr(>|z|)
+(Intercept)   0.2412     0.6035     0.4    0.689  
+\end{Verbatim}
+According to the estimates, the probability of throwing a coin and obtaining
+a head is
+$exp(0.24)/(1+exp(0.24))=\Sexpr{round(exp(0.24)/(1+exp(0.24)),2)}$. Agresti
+reports $\hat\alpha=0.259$ and $\hat\sigma=0.557$. Note that the
+estimate is similar to that obtained with the Laplace approximation
+but the standard error is similar to that obtained with the
+Gauss-Hermite approximation.\\
+
+c) The predicted values are obtained with
+<<fitted5>>=
+(tb.ex5.res <- cbind(tb.ex5[, 1:3], Obs = round(tb.ex5[, 3]/tb.ex5[,
+    2], 2), Fit.1 = round(exp(fitted(fit.glmer5))/(1 + exp(fitted(fit.glmer5))),
+    2)))
+@
+
+
+d) As it's stated in \citeauthor[pp. 302--303]{Agresti-2007}, if we
+are confident that the logits of probabilities vary according to a
+normal distribution, then the random effects model borrows from the
+whole to estimate the probabilities of a particular cluster. Contrary
+the model where the observed proportion corresponds to the ML estimate
+only use the data in a particular cluster to estimate the
+probability; when the sample in the cluster is small the estimates
+might not be the correct and have larger standard errors. Therefore
+the estimates obtained with the random effects model are preferred.\\
+
+e) If we assume that all the toss were done with a fair coin (\ie
+$\pi_i$=0.5) then we see that the difference between that and the
+estimates obtained with the random effects model are smaller than
+the observed proportions \parencite[see][p. 303]{Agresti-2007}.
+
+<<diff5>>=
+cbind(tb.ex5.res, Diff = abs(0.5 - tb.ex5.res$Fit.1), Diff2 = abs(0.5 -
+    tb.ex5.res$Obs))
+@
+
+
+\problem
+Although \citeauthor{Agresti-2007} provides the results of the random
+intercept model, it's better to fit the data with the functions
+provided in \textsf{R} since, as it was noted they result in different
+estimates. So first we construct the data.
+<<data.construct6>>=
+tb7.3 <- read.table("supp_data/tb7-3", header = TRUE)
+tb7.3long <- reshape(tb7.3, direction = "long", varying = c("cigarrette",
+    "alcohol", "marijuana"), v.names = "response", timevar = "question",
+    times = c("cigarrette", "alcohol", "marijuana"))
+tb7.3long <- tb7.3long[rep(1:nrow(tb7.3long), tb7.3long$count),
+    ]
+row.names(tb7.3long) <- 1:nrow(tb7.3long)
+tb7.3long <- within(tb7.3long, {
+    rm(id, count)
+})
+tb7.3long$response <- ifelse(tb7.3long$response == "yes", 1,
+    0)
+tb7.3long$question <- factor(tb7.3long$question, levels = c("cigarrette",
+    "alcohol", "marijuana"))
+tb7.3long$case <- 1:nrow(tb7.3long)
+tb7.3long <- tb7.3long[order(tb7.3long$case), ]
+@
+
+Now, note that the model reported in the book is
+$logit[P(Y_{it}=1)]=\mu_i+\beta_t$, this is equivalent to a model with
+no intercept, thus to fit that we must specify \texttt{-1} in the
+model formula.
+<<model.fit6>>=
+fit.glmer6 <- glmer(response ~ -1 + question + (1|case), data = tb7.3long,
+                    family = binomial, nAGQ = 60)
+fit.lmer6 <- glmer(response ~ -1 + question + (1|case), data = tb7.3long,
+                  family = binomial)
+@
+
+Note that according to the results obtained with the Laplace
+approximation, it seems that the estimates reported in
+\citeauthor{Agresti-2007} are not correct, namely $\beta_1$ corresponds to
+the estimate for alcochol and $\beta_2$ to cigarrete.\\
+
+a) In this model, $\beta_t$ represents the odds of consuming substance
+$t$. For example the odds of consuming cigarrete are $exp(1.621)=
+\Sexpr{round(exp(1.621),3)}$ while the odds of consuming marijuana are $exp(-0.775)=
+\Sexpr{round(exp(-0.775),3)}$.\\
+
+b) A large value of $\sigma$ represents greater heterogeneity among
+the subjects, caused by not including certain explanatory variables
+that are associated with the response (\eg. gender, age)
+\parencite[p. 299]{Agresti-2007}.\\
+
+c) A large value of $\mu_i$ imply that the odds of consuming a given
+substance is higher despite the substance type.\\
+
+\problem
+Because the model wasn't fitted in chapter 9, we fit it now,
+<<model.fit.gee7>>=
+gee(response ~ -1 + question, id = case, family = binomial, corstr = "exchangeable",
+    data = tb7.3long)
+@
+
+Then we can compare the estimates with those obtained in the previous
+problem; they are summarized in the followin table
+\begin{table}[h]
+  \centering
+  \caption{Estimates for the data in table 7.3, about the consumption of alcohol, cigarrette and marijuana, fitted with the GEE (with exchangeable correlation structure) and GLMM model with Gauss-Hermite approximation (q=60)}
+  \label{tab:gee-vs-glmm}
+  \begin{tabular}{ccc}
+    \hline
+    \rule[-2ex]{0pt}{6ex}Estimate& GEE &GLMM\\\hline
+    Cigarrette&	0.649 & 1.485 \\ 
+    Alcohol   &	1.785 & 3.864 \\ 
+    Marijuana &	-0.315& -0.687\\\hline 
+  \end{tabular}
+\end{table}
+In section 2.2 of \citeauthor{Agresti-2007} the author mentions that
+``when the link function is not linear, like the logit, the population
+averaged effects of the marginal model (\ie GEE) is tupically smaller
+in magnitude than the cluster--specific model (\ie GLMM)''. The more
+heterogenic are the observations the greater the difference and as it
+was seen the estimate of $\sigma$ in the GLMM is a big one.\\
+
+b) Loglinear models try to find an association between two or more
+response variables, in this case among the consumption of three
+substances, for example the odds of consuming cigarrettes for those
+who have consumed alcohol and those who haven't. Also, just like the
+GEE these estimates are population averaged. On the other hand, GLMM
+models estimate the odds of consuming or not a particular substance,
+it doesn't take into account whether the subject has consumed another
+substance or not, but more importantly, GLMM are subject specific.\\
+
+The response that \citeauthor{Agresti-2007} gives is: ``Loglinear
+model focuses on strength of association between use of one sub-
+stance and use of another, given whether or not one used remaining
+substance.  The focus is not on the odds of having used one substance
+compared with the odds of using another''.\\
+
+c) As it's stated in \textcite[][p. 302]{Agresti-2007}, when $\sigma=0$,
+all the probabilities ($\pi_i$) are equal. This means that no matter
+how much change the explanatory variables the response variable is the
+same, in other words they are independent. Regarding the loglinear
+models the equivalent to this would be the \emph{mutual independence
+  model} (X, Y, Z) where all pairs of variables are treated as
+independent, both conditionally and marginally
+\parencite[see][p. 208]{Agresti-2007}.\\ \citeauthor{Agresti-2007} states
+that, ``If $\hat\sigma = 0$, GLMM has the same fit as loglinear model (A, C, M), since conditional independence of responses given random effect translates to conditional
+independence marginally also.\\
+
+\problem
+First we construct the data, being careful to code the factors in the
+same order as it was done in problem 9.2
+<<data.construct8>>=
+tb7.13 <- read.table("supp_data/tb7-13", header = TRUE)
+tb7.13long <- reshape(tb7.13, varying = c("C", "A", "M"), direction = "long",
+    v.names = "response", times = c("C", "A", "M"), timevar = "question")
+tb7.13long <- tb7.13long[rep(1:nrow(tb7.13long), tb7.13long$Count),
+    ]
+tb7.13long <- within(tb7.13long, {
+    rm(id, Count)
+})
+tb7.13long$case <- 1:2276
+tb7.13long <- tb7.13long[order(tb7.13long$case), ]
+row.names(tb7.13long) <- 1:nrow(tb7.13long)
+tb7.13long$R <- factor(tb7.13long$R, levels = c("O", "W"))
+tb7.13long$G <- factor(tb7.13long$G, levels = c("M", "F"))
+tb7.13long$question <- factor(tb7.13long$question, levels = c("M",
+    "A", "C"))
+@
+
+
+a)Then we fit the model, first with the Gauss-Hermite approximation and
+then with the Laplace approximation\footnote{The former was done with
+  60 quadrature points and up to 500 iterations, while the latter was
+  done with up to 500 iterations. Also another fit was done with 600 q
+points, but it yield considerabily different estimates, and also no
+AIC value.}.
+<<model.fit8>>=
+fit.glmer8 <- glmer(response ~ question + R + G + (1|case), data = tb7.13long,
+                    family = binomial, nAGQ = 60) #  control = list(maxIter = 500)
+fit.lmer8 <- glmer(response ~ question + R + G + (1|case), data = tb7.13long,
+                  family = binomial) #  control = list(maxIter = 500)
+@
+
+The estimates are the following
+\begin{Verbatim}[formatcom=\color{MidnightBlue}]
+Random effects:
+ Groups Name        Variance Std.Dev.
+ case   (Intercept) 8.9206   2.9867  
+Number of obs: 6828, groups: case, 2276
+
+Fixed effects:
+            Estimate Std. Error z value Pr(>|z|)    
+(Intercept) -1.46163    0.27806   -5.26 1.47e-07
+questionA    4.55384    0.12289   37.05  < 2e-16
+questionC    2.17346    0.09408   23.10  < 2e-16
+RW           0.90615    0.27503    3.29 0.000985
+GF          -0.12420    0.14819   -0.84 0.401968
+\end{Verbatim}
+Because we have set marijuana as a base category, the estimates for
+the remaining substances (\ie Alcohol and Cigarretes) are interpreted
+as the log odds of comsuming one of the remaining substances instead
+of marijuana, exponentiating this results in the odds ratio, for
+example the odds of consuming alcohol (conditioning on race and gender) instead of marijuana is
+$exp(4.554)=\Sexpr{round(exp(4.554),3)}$ times that of marijuana. Similarly the odds of a
+white person to consume one of the substances, conditioning on the
+gender are $exp(0.906)=\Sexpr{round(exp(0.906),3)}$ times that for
+other races. Finally the odds for a female (conditioning on the race)
+to consume a given substance is
+$exp(-0.124)=\Sexpr{round(exp(-0.124),3)}$ times that of males, in
+other words the odds for females to consume are 12\% lower than
+males. However note that the p-value for the gender effect is non-significant.\\
+
+b) The estimates just calculated and those of problem 9.2 are
+summarized in the following table.
+\begin{table}[h]
+  \centering
+  \caption{Estimates for the data in table 7.13, about substance consumption based on gender and race, calculated with GEE and GLMM}
+  \label{tab:gee-vs-glmm8}
+  \begin{tabular}{lcc}
+    \hline
+    \rule[-2ex]{0pt}{6ex}&GEE Estimate (SE)& GLMM Estimate (SE)\\
+    \hline
+    (Intercept)&-0.627 (0.137) &-1.462 (0.278)\\ 
+    questionA  & 2.106 (0.061) & 4.554 (0.123)\\ 
+    questionC  & 0.967 (0.042) & 2.173 (0.094)\\ 
+    RW         & 0.378 (0.135) & 0.906 (0.275)\\ 
+    GF         &-0.077 (0.074) &-0.124 (0.148)\\
+    $\rho$&0.437&--\\
+    $\hat\sigma$&--&2.987\\
+    \hline
+  \end{tabular}
+\end{table}
+As it was stated for the previous problem (a) when the link function
+is non-linear and the observations show heterogeneity (as it's shown
+in the $\rho$ and $\hat\sigma$ values) the conditional model's
+estimates are greater in magnitude than the marginal ones.\\
+
+\problem
+Looking at the answers given in \citeauthor{Agresti-2007}, it seems
+like the model used in problem 9.6 was correct, however it's
+interesting that in order to match the values reported the number of
+quadrature points must be around 600. In previous problems q values as
+high as 600 give completely different results.
+<<model.fit9>>=
+tb9.6long <- read.table("supp_data/tb9-6b", header = TRUE)
+fit.glmer9 <- glmer(outcome ~ seq + treat + (1 | case), data = tb9.6long,
+    family = binomial, nAGQ = 100) # control = list(maxIter = 500)
+@
+
+In this model, treatment A (placebo) was set to zero, thus the
+estimates represent the log odds of relief when taking one of the
+doses (low or high) compared to taking the placebo; for example the
+odds of relief when taking the low dose is
+$exp(1.992)=\Sexpr{round(exp(1.992),3)}$ times that obtained with the
+placebo. The estimate for $\sigma$ is
+0.41. \textcite[][p.371]{Agresti-2007} reports values of $\hat\beta_A$ =
+0, $\hat\beta_B$ = 1.99 (SE = 0.35), $\hat\beta_C$ = 2.51 (SE = 0.37),
+with $\sigma$ = 0. Note that except for $\sigma$ the estimates values
+are the same as those reported in the book.\\
+
+\problem
+
+
+
+\printbibliography
+\end{document}
